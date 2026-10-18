@@ -22,9 +22,6 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Preparar el SDK de Android
-        uses: android-actions/setup-android@v3
-
       - name: Instalar Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -61,11 +58,4 @@ jobs:
             Descargá ControlRider.apk, abrilo en tu teléfono Android e instalalo.
             Compilación número ${{ github.run_number }}.
           files: ControlRider.apk
-          make_latest: true
-
-      - name: Guardar el registro si la compilación falló
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: registro-de-compilacion
-          path: build.log
+          make_latest:
