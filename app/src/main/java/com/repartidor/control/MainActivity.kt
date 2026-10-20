@@ -30,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.repartidor.control.ui.AjustesScreen
+import com.repartidor.control.ui.CombustibleScreen
+import com.repartidor.control.ui.DescuentosScreen
 import com.repartidor.control.ui.DiarioScreen
 import com.repartidor.control.ui.GastosFijosScreen
 import com.repartidor.control.ui.InicioScreen
@@ -128,6 +130,8 @@ private fun Raiz(app: AppState) {
                     Box(Modifier.fillMaxSize()) {
                         when (s) {
                             "Gastos fijos" -> GastosFijosScreen(app)
+                            "Descuentos" -> DescuentosScreen(app)
+                            "Combustible" -> CombustibleScreen(app)
                             "Mantenimiento" -> MantenimientoScreen(app)
                             "Recordatorios" -> RecordatoriosScreen(app)
                             "Rendimiento" -> RendimientoScreen(app)

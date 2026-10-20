@@ -48,6 +48,8 @@ fun ResumenScreen(app: AppState) {
     val h = rango.second
     val t = remember(v, modo, ref) { c.totales(d, h) }
     val dias = remember(v, modo, ref) { c.porDia(d, h).associateBy { it.fecha } }
+    val desc = remember(v, modo, ref) { if (semanal) c.descuentoSemana(h) else c.descuentosPeriodo(d, h) }
+    val aCobrar = t.neto - desc.total
 
     fun mover(n: Int) {
         ref = if (semanal) ref.plusDays(7L * n) else sumarMeses(ref, n)
@@ -85,7 +87,7 @@ fun ResumenScreen(app: AppState) {
         }
 
         FilaKpis {
-            SaldoKpi(if (semanal) "Semana" else "Mes", t.neto, peso())
+            SaldoKpi(if (semanal) "Semana" else "Mes", aCobrar, peso())
             KpiMonto("Efectivo recaudado", t.efectivo, Paleta.Violeta, peso())
         }
         FilaKpis {
@@ -115,7 +117,10 @@ fun ResumenScreen(app: AppState) {
                 dia = dia.plusDays(1)
             }
             if (!hayFilas && !semanal) Subtexto("No hay turnos cargados en este mes.")
-            FilaDato("SALDO (base + adic. + grupo + bono − efectivo)", money(t.neto), if (t.neto < 0) Paleta.Rojo else Paleta.Verde, true)
+            FilaDato("Saldo de los turnos (base + adic. + grupo + bono − efectivo)", money(t.neto), if (t.neto < 0) Paleta.Rojo else Paleta.Verde, true)
+            if (desc.seguro > 0) FilaDato("− Seguro", money(desc.seguro), Paleta.Ambar)
+            if (desc.credito > 0) FilaDato("− Cuota del crédito", money(desc.credito), Paleta.Violeta)
+            FilaDato(if (aCobrar < 0) "LE DEBÉS A LA APP" else "A COBRAR", money(kotlin.math.abs(aCobrar)), if (aCobrar < 0) Paleta.Rojo else Paleta.Verde, true)
             Subtexto("Si es negativo, le debés esa diferencia a la app. Las propinas no se suman ni se restan.")
         }
 

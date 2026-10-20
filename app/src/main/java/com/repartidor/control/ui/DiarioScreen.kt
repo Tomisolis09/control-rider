@@ -174,6 +174,7 @@ fun DiarioScreen(app: AppState) {
                 partes.add("hogar ${money0(eq.fijosDia)}")
                 partes.add("gastos de trabajo ${money0(eq.gastosDia)}")
                 if (eq.fondoDia > 0.5) partes.add("fondo de repuestos ${money0(eq.fondoDia)}")
+                if (eq.descDia > 0.5) partes.add("seguro y crédito de la app ${money0(eq.descDia)}")
                 Text("Para cubrir todo necesitás facturar ${money(eq.objetivo)} por día (${partes.joinToString(" + ")}).", fontSize = 14.sp)
                 val pct = llevo / eq.objetivo
                 Barra(pct.toFloat(), if (pct >= 1) Paleta.Verde else Paleta.Ambar)

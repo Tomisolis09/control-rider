@@ -45,6 +45,7 @@ private fun lineasPlan(p: Plan): List<Linea> {
     l.add(Linea("• Ganancia por día: ${money(p.porDia)} (descontados efectivo y gastos del turno)", 0))
     l.add(Linea("• Estimado por semana (${p.diasSemana} días): ${money(p.porSemBruta)}", 0))
     if (p.fijosMes > 0) l.add(Linea("• Gastos fijos del hogar: ${money(p.fijosMes)} por mes (~${money(p.fijosSem)} por semana)", 0))
+    if (p.descSem > 0) l.add(Linea("• Seguro y crédito de la app: ${money(p.descSem)} por semana", 0))
     l.add(Linea("• Te queda para ahorrar por semana: ${money(p.porSem)}", 0))
     if (p.estado == "sin_margen") {
         l.add(Linea("Sin margen para ahorrar", 1))
@@ -152,7 +153,7 @@ fun MetaScreen(app: AppState) {
         val dd = num(simDias)?.toInt()
         if (ped == null || dd == null) { app.aviso = "Usá números positivos"; return }
         val dias = minOf(dd, 7 - p.diasSemana)
-        val nueva = (p.diasSemana + dias) * (p.porDia + ped * p.prom) - p.fijosSem
+        val nueva = (p.diasSemana + dias) * (p.porDia + ped * p.prom) - p.fijosSem - p.descSem
         val antes = p.falta / p.porSem
         if (nueva <= 0) { simTxt = "Aun así no te quedaría margen para ahorrar: revisá tus gastos."; return }
         val despues = p.falta / nueva

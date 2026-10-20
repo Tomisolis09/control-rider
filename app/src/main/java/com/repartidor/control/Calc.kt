@@ -20,7 +20,7 @@ data class DiaRow(
 
 data class Equilibrio(
     val objetivo: Double, val fijosDia: Double, val gastosDia: Double, val fondoDia: Double,
-    val ingresoPedido: Double, val diasTrab: Int
+    val ingresoPedido: Double, val diasTrab: Int, val descDia: Double = 0.0
 )
 
 data class Recordatorio(
@@ -32,8 +32,27 @@ data class Recordatorio(
 data class Vencimiento(val id: Long, val concepto: String, val fecha: LocalDate, val dias: Int, val estado: String)
 data class Cobro(
     val cobro: LocalDate, val ini: LocalDate, val fin: LocalDate, val estado: String,
-    val neto: Double, val propinas: Double
+    val neto: Double, val propinas: Double, val descuentos: Double = 0.0
 )
+
+/** Regla de descuento semanal que aplica la app: seguro (indefinido) o cuota de un crédito (con total). */
+class Descuento(
+    val id: Long, val tipo: String, val monto: Double, val desde: LocalDate, val hasta: LocalDate?,
+    val total: Double, val nota: String
+)
+
+class DescSemana(val seguro: Double, val credito: Double) {
+    val total: Double get() = seguro + credito
+}
+
+class CreditoEstado(val pagado: Double, val pendiente: Double, val cuotasRestantes: Int)
+
+/** Consumo de combustible entre recargas (se asume que cada recarga llena el tanque). */
+class Consumo(val km: Int, val litros: Double, val gasto: Double) {
+    val kmPorLitro: Double get() = if (litros > 0) km / litros else 0.0
+    val costoKm: Double get() = if (km > 0) gasto / km else 0.0
+}
+
 data class FondoEstado(val apartado: Double, val usado: Double) {
     val disponible: Double get() = apartado - usado
 }
@@ -50,7 +69,7 @@ data class Plan(
     val fijosMes: Double = 0.0, val fijosSem: Double = 0.0, val porSem: Double = 0.0, val porDiaLibre: Double = 0.0,
     val prom: Double = 0.0, val semNec: Double? = null, val diasRest: Int? = null,
     val necSem: Double? = null, val necDia: Double? = null, val factible: Boolean? = null,
-    val objDia: Double = 0.0, val modo: String = ""
+    val objDia: Double = 0.0, val modo: String = "", val descSem: Double = 0.0
 )
 
 /** Toda la lógica de cálculo de la app (portada de la versión de escritorio). */
@@ -125,7 +144,8 @@ class Calc(val db: Db) {
         val gastosDia = if (diasTrab > 0) t.gastos / diasTrab else 0.0
         val fondoDia = if (diasTrab > 0) fondoAporte(t.pedidos, t.bruto) / diasTrab else 0.0
         val ingresoPedido = if (t.pedidos > 0) (t.bruto + t.propinas) / t.pedidos else 0.0
-        return Equilibrio(fijosDia + gastosDia + fondoDia, fijosDia, gastosDia, fondoDia, ingresoPedido, diasTrab)
+        val descDia = descuentoSemana(periodoSemana(hoy, db.diaCierre).second).total / diasSem
+        return Equilibrio(fijosDia + gastosDia + fondoDia + descDia, fijosDia, gastosDia, fondoDia, ingresoPedido, diasTrab, descDia)
     }
 
     // ---------------------------------------------------------------- mantenimiento y recordatorios
@@ -182,6 +202,75 @@ class Calc(val db: Db) {
             Vencimiento(it.l("id"), it.s("concepto"), f, dias, if (dias < 0) "VENCIDO" else if (dias <= 30) "Pronto" else "Ok")
         }
 
+    // ---------------------------------------------------------------- descuentos semanales de la app
+    fun descuentos(): List<Descuento> = db.rows("SELECT * FROM descuentos ORDER BY desde, id").map {
+        Descuento(
+            it.l("id"), it.s("tipo"), it.d("monto"), LocalDate.parse(it.s("desde")),
+            it.sn("hasta")?.let { h -> if (h.isEmpty()) null else LocalDate.parse(h) }, it.d("total"), it.s("nota")
+        )
+    }
+
+    /** Monto de una regla en la semana que termina el día [fin]. */
+    fun montoRegla(r: Descuento, fin: LocalDate): Double {
+        val primerFin = periodoSemana(r.desde, db.diaCierre).second
+        if (fin.isBefore(primerFin)) return 0.0
+        val hasta = r.hasta
+        if (hasta != null && fin.minusDays(6).isAfter(hasta)) return 0.0
+        if (r.tipo != "credito" || r.total <= 0) return r.monto
+        val previas = java.time.temporal.ChronoUnit.DAYS.between(primerFin, fin) / 7
+        return maxOf(0.0, minOf(r.monto, r.total - r.monto * previas))
+    }
+
+    /** Lo que la app descuenta en la semana que termina el día [fin]. */
+    fun descuentoSemana(fin: LocalDate): DescSemana {
+        var s = 0.0
+        var c = 0.0
+        for (r in descuentos()) {
+            val m = montoRegla(r, fin)
+            if (r.tipo == "credito") c += m else s += m
+        }
+        return DescSemana(s, c)
+    }
+
+    /** Suma de los descuentos de todas las semanas que terminan entre [desde] y [hasta]. */
+    fun descuentosPeriodo(desde: LocalDate, hasta: LocalDate): DescSemana {
+        var s = 0.0
+        var c = 0.0
+        var fin = periodoSemana(desde, db.diaCierre).second
+        while (!fin.isAfter(hasta)) {
+            val d = descuentoSemana(fin)
+            s += d.seguro
+            c += d.credito
+            fin = fin.plusDays(7)
+        }
+        return DescSemana(s, c)
+    }
+
+    fun creditoEstado(r: Descuento, hoy: LocalDate): CreditoEstado {
+        var pagado = 0.0
+        var fin = periodoSemana(r.desde, db.diaCierre).second
+        var vueltas = 0
+        while (!fin.isAfter(hoy) && vueltas < 2000) {
+            pagado += montoRegla(r, fin)
+            fin = fin.plusDays(7)
+            vueltas++
+        }
+        val pendiente = maxOf(0.0, r.total - pagado)
+        val cuotas = if (r.monto > 0) Math.ceil(pendiente / r.monto).toInt() else 0
+        return CreditoEstado(pagado, pendiente, cuotas)
+    }
+
+    // ---------------------------------------------------------------- combustible
+    fun consumo(vehiculo: String): Consumo? {
+        val todas = db.rows("SELECT * FROM combustible WHERE vehiculo=? AND km IS NOT NULL ORDER BY km, id", vehiculo)
+        val r = todas.takeLast(8)
+        if (r.size < 2) return null
+        val km = r.last().i("km") - r.first().i("km")
+        if (km <= 0) return null
+        val resto = r.drop(1)
+        return Consumo(km, resto.sumOf { it.d("litros") }, resto.sumOf { it.d("monto") })
+    }
+
     // ---------------------------------------------------------------- calendario de cobros
     fun calendarioCobros(hoy: LocalDate, n: Int = 4): List<Cobro> {
         val finActual = periodoSemana(hoy, db.diaCierre).second
@@ -200,10 +289,12 @@ class Calc(val db: Db) {
             if (!cobro.isBefore(hoy)) {
                 val ini = fin.minusDays(6)
                 if (ini.isAfter(hoy)) {
-                    filas.add(Cobro(cobro, ini, fin, "Proyectada", promNeto, promProp))
+                    val d = descuentoSemana(fin).total
+                    filas.add(Cobro(cobro, ini, fin, "Proyectada", promNeto - d, promProp, d))
                 } else {
                     val t = totales(ini, fin)
-                    filas.add(Cobro(cobro, ini, fin, if (fin.isBefore(hoy)) "Cerrada" else "En curso", t.neto, t.propinas))
+                    val d = descuentoSemana(fin).total
+                    filas.add(Cobro(cobro, ini, fin, if (fin.isBefore(hoy)) "Cerrada" else "En curso", t.neto - d, t.propinas, d))
                 }
             }
             fin = fin.plusDays(7)
@@ -250,10 +341,11 @@ class Calc(val db: Db) {
         val porDia = ingreso / diasTrab
         val fijosMes = fijosReferencia(hoy)
         val fijosSem = fijosMes * 12 / 52
-        val porSem = porDia * diasSem - fijosSem
+        val descSem = descuentoSemana(periodoSemana(hoy, db.diaCierre).second).total
+        val porSem = porDia * diasSem - fijosSem - descSem
         var p = base.copy(
             estado = "ok", diasTrab = diasTrab, porDia = porDia, porSemBruta = porDia * diasSem,
-            fijosMes = fijosMes, fijosSem = fijosSem, porSem = porSem, porDiaLibre = porSem / diasSem,
+            fijosMes = fijosMes, fijosSem = fijosSem, descSem = descSem, porSem = porSem, porDiaLibre = porSem / diasSem,
             pedidosDia = t.pedidos.toDouble() / diasTrab,
             prom = if (t.pedidos > 0) (t.bruto + (if (incluirProp) t.propinas else 0.0)) / t.pedidos else 0.0
         )

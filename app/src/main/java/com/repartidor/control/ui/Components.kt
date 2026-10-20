@@ -202,6 +202,16 @@ fun CampoNum(label: String, valor: String, onValor: (String) -> Unit, modifier: 
     )
 }
 
+/** Número con decimales (litros, etc.), sin signo de moneda. */
+@Composable
+fun CampoDec(label: String, valor: String, onValor: (String) -> Unit, modifier: Modifier = Modifier.fillMaxWidth()) {
+    OutlinedTextField(
+        value = valor, onValueChange = onValor, label = { Text(label) }, singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        modifier = modifier
+    )
+}
+
 /** Campo de dinero con el signo $ siempre visible; al salir del campo da formato (88.897,62). */
 @Composable
 fun CampoMonto(label: String, valor: String, onValor: (String) -> Unit, modifier: Modifier = Modifier.fillMaxWidth()) {

@@ -15,6 +15,16 @@ class Row(private val m: Map<String, Any?>) {
     fun tiene(k: String): Boolean = m[k] != null
 }
 
+/** Tablas agregadas en la versión 2 de la base (descuentos semanales y combustible). */
+private val ESQUEMA_V2 = listOf(
+    """CREATE TABLE descuentos(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, tipo TEXT NOT NULL, monto REAL DEFAULT 0, desde TEXT NOT NULL,
+        hasta TEXT, total REAL DEFAULT 0, nota TEXT)""",
+    """CREATE TABLE combustible(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT NOT NULL, vehiculo TEXT, litros REAL DEFAULT 0,
+        monto REAL DEFAULT 0, km INTEGER, gasto_id INTEGER)"""
+)
+
 private val ESQUEMA = listOf(
     """CREATE TABLE diario(
         id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT NOT NULL, app TEXT,
@@ -42,16 +52,18 @@ private val ESQUEMA = listOf(
         id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT NOT NULL, monto REAL NOT NULL, nota TEXT)""",
     "CREATE INDEX ix_diario_fecha ON diario(fecha)",
     "CREATE INDEX ix_gastos_fecha ON gastos(fecha)"
-)
+) + ESQUEMA_V2
 
-class Db(context: Context) : SQLiteOpenHelper(context, "repartidor.db", null, 1) {
+class Db(context: Context) : SQLiteOpenHelper(context, "repartidor.db", null, 2) {
 
     override fun onCreate(db: SQLiteDatabase) {
         for (sql in ESQUEMA) db.execSQL(sql)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Versión 1: todavía no hay migraciones.
+        if (oldVersion < 2) {
+            for (sql in ESQUEMA_V2) db.execSQL(sql)
+        }
     }
 
     fun rows(sql: String, vararg args: Any?): List<Row> {
@@ -80,6 +92,28 @@ class Db(context: Context) : SQLiteOpenHelper(context, "repartidor.db", null, 1)
         val params = arrayOfNulls<Any?>(args.size)
         for (i in args.indices) params[i] = args[i]
         writableDatabase.execSQL(sql, params)
+    }
+
+    /** Inserta una fila y devuelve su id. */
+    fun insertar(sql: String, vararg args: Any?): Long {
+        val st = writableDatabase.compileStatement(sql)
+        try {
+            for (i in args.indices) {
+                val a = args[i]
+                val pos = i + 1
+                when (a) {
+                    null -> st.bindNull(pos)
+                    is Double -> st.bindDouble(pos, a)
+                    is Float -> st.bindDouble(pos, a.toDouble())
+                    is Int -> st.bindLong(pos, a.toLong())
+                    is Long -> st.bindLong(pos, a)
+                    else -> st.bindString(pos, a.toString())
+                }
+            }
+            return st.executeInsert()
+        } finally {
+            st.close()
+        }
     }
 
     // ---- configuración (clave/valor)
