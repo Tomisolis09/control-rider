@@ -50,7 +50,7 @@ fun DescuentosScreen(app: AppState) {
         if (m == null || m <= 0) { app.aviso = "Ingresá el monto semanal del seguro"; return }
         db.exec("INSERT INTO descuentos(tipo,monto,desde,total,nota) VALUES(?,?,?,?,?)", "seguro", m, segDesde.toString(), 0.0, "")
         segMonto = ""
-        app.cambio("Seguro agregado: ${money(m)} por semana")
+        app.cambio("Seguro de la app agregado: ${money(m)} por semana")
     }
 
     fun agregarCredito() {
@@ -65,23 +65,25 @@ fun DescuentosScreen(app: AppState) {
     }
 
     Pantalla {
-        Titulo("Seguro y crédito de la app", "Se descuentan cada semana de lo que te toca cobrar")
+        Titulo("Seguro y crédito de la app", "Lo que la plataforma (Rappi, PedidosYa, etc.) te descuenta cada semana")
+        Subtexto("Ojo: el seguro de acá es el que cobra la app de reparto. No es el seguro de tu vehículo (ese se carga en Recordatorios > Vencimientos).")
 
         FilaKpis {
-            KpiMonto("Seguro esta semana", estaSemana.seguro, Paleta.Ambar, peso())
+            KpiMonto("Seguro de la app esta semana", estaSemana.seguro, Paleta.Ambar, peso())
             KpiMonto("Cuota del crédito", estaSemana.credito, Paleta.Violeta, peso())
         }
         FilaKpis {
             KpiMonto("Total a descontar", estaSemana.total, Paleta.Rojo, peso())
         }
         Subtexto("Semana actual: hasta el ${fmtFecha(finSemana)}. Aparece restado en Inicio, Resumen, calendario de cobros, meta y punto de equilibrio.")
+        Subtexto("Si lo que hacés en la semana no alcanza para cubrir el seguro y la cuota, la diferencia queda como deuda con la app y pasa a la semana siguiente, donde se va descontando con lo que hagas.")
 
-        Panel("Seguro") {
-            Subtexto("Lo que pagás por semana a la app por el seguro. Si el monto cambia, finalizá el anterior y agregá uno nuevo desde la semana que corresponda.")
+        Panel("Seguro de la app") {
+            Subtexto("Lo que la app te cobra por semana por su seguro (no es el seguro del vehículo). Si el monto cambia, finalizá el anterior y agregá uno nuevo desde la semana que corresponda.")
             CampoMonto("Monto semanal", segMonto, { segMonto = it })
             Subtexto("Se descuenta desde la semana de esta fecha:")
             CampoFecha(segDesde, { segDesde = it })
-            Boton("Agregar seguro", { agregarSeguro() })
+            Boton("Agregar seguro de la app", { agregarSeguro() })
         }
 
         Panel("Crédito que te da la app") {
@@ -101,7 +103,7 @@ fun DescuentosScreen(app: AppState) {
         }
 
         Panel("Tus descuentos") {
-            if (reglas.isEmpty()) Subtexto("Todavía no cargaste ningún seguro ni crédito.")
+            if (reglas.isEmpty()) Subtexto("Todavía no cargaste ningún seguro de la app ni crédito.")
             for (r in reglas) {
                 val activa = r.hasta == null || !r.hasta.isBefore(hoy)
                 val e = estados[r.id]
@@ -113,7 +115,7 @@ fun DescuentosScreen(app: AppState) {
                             if (e.pendiente <= 0.005) Text("✔ Crédito terminado de pagar", color = Paleta.Verde, fontSize = 13.sp)
                         }
                     } else {
-                        Text("Seguro · ${money(r.monto)} por semana", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("Seguro de la app · ${money(r.monto)} por semana", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                     val hasta = r.hasta
                     Subtexto(

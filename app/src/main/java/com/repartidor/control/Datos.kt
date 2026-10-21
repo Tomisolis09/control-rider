@@ -7,7 +7,7 @@ val CATEGORIAS_FIJOS = listOf(
     "Transporte", "Salud", "Educación", "Otro"
 )
 val VEHICULOS = listOf("Moto", "Bici", "Auto")
-val CONCEPTOS_VENC = listOf("Seguro", "Patente", "Licencia de conducir", "Revisión técnica (VTV)", "Otro")
+val CONCEPTOS_VENC = listOf("Seguro del vehículo", "Patente", "Licencia de conducir", "Revisión técnica (VTV)", "Otro")
 val MODOS_FONDO = listOf("Desactivado", "Monto fijo por pedido", "% de lo generado")
 
 val MANTENIMIENTO_BASICO: Map<String, List<String>> = mapOf(

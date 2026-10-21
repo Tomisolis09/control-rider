@@ -26,7 +26,7 @@ fun InicioScreen(app: AppState) {
     val tHoy = remember(v) { c.totales(hoy, hoy) }
     val tSem = remember(v) { val p = periodoSemana(hoy, app.db.diaCierre); c.totales(p.first, p.second) }
     val tMes = remember(v) { c.totales(hoy.withDayOfMonth(1), finDeMes(hoy)) }
-    val descSem = remember(v) { c.descuentoSemana(periodoSemana(hoy, app.db.diaCierre).second).total }
+    val cuentaSem = remember(v) { c.cuentaSemana(periodoSemana(hoy, app.db.diaCierre).second) }
     val descMes = remember(v) { c.descuentosPeriodo(hoy.withDayOfMonth(1), finDeMes(hoy)).total }
     val cobros = remember(v) { c.calendarioCobros(hoy) }
     val alertas = remember(v) { c.alertas(hoy) }
@@ -62,7 +62,7 @@ fun InicioScreen(app: AppState) {
 
         FilaKpis {
             SaldoKpi("Hoy", tHoy.neto, peso())
-            SaldoKpi("Semana", tSem.neto - descSem, peso())
+            SaldoKpi("Semana", cuentaSem.total, peso())
             SaldoKpi("Mes", tMes.neto - descMes, peso())
         }
         FilaKpis {
@@ -94,7 +94,8 @@ fun InicioScreen(app: AppState) {
                         true
                     )
                     Subtexto("Semana ${fmtCorto(cb.ini)} al ${fmtCorto(cb.fin)} · propinas $pref${money(cb.propinas)}" +
-                        (if (cb.descuentos > 0) " · descuentos ${money(cb.descuentos)}" else ""))
+                        (if (cb.descuentos > 0) " · descuentos ${money(cb.descuentos)}" else "") +
+                        (if (cb.arrastre < -0.005) " · deuda anterior ${money(-cb.arrastre)}" else ""))
                 }
             }
             Subtexto("Cerrada = ya terminó · En curso = parcial · Proyectada (~) = promedio de tus últimas semanas.")

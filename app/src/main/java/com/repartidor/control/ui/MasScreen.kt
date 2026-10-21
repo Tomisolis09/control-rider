@@ -13,7 +13,7 @@ import java.io.File
 
 val SECCIONES_MAS = listOf(
     "Gastos fijos" to "🏷  Gastos fijos del hogar",
-    "Descuentos" to "🏦  Seguro y crédito de la app",
+    "Descuentos" to "🏦  Seguro de la app y crédito",
     "Combustible" to "⛽  Combustible y costo por km",
     "Mantenimiento" to "🔧  Mantenimiento del vehículo",
     "Recordatorios" to "🔔  Recordatorios y vencimientos",

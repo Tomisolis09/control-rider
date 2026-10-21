@@ -18,6 +18,7 @@ class AppState(context: Context) {
 
     /** Llamar después de cualquier escritura en la base. */
     fun cambio(mensaje: String? = null) {
+        calc.invalidar()
         version++
         if (mensaje != null) aviso = mensaje
     }

@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.repartidor.control.ui.AjustesScreen
+import com.repartidor.control.ui.BannerAnuncio
 import com.repartidor.control.ui.CombustibleScreen
 import com.repartidor.control.ui.DescuentosScreen
 import com.repartidor.control.ui.DiarioScreen
@@ -48,9 +49,11 @@ import com.repartidor.control.ui.SECCIONES_MAS
 import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
+    private lateinit var app: AppState
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val app = AppState(this)
+        app = AppState(this)
         setContent {
             RepartidorTheme(app.tema) {
                 Raiz(app)
@@ -98,6 +101,8 @@ private fun Raiz(app: AppState) {
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
+            androidx.compose.foundation.layout.Column {
+                BannerAnuncio()
             NavigationBar {
                 for (d in DESTINOS) {
                     val aviso: String? = when (d.clave) {
@@ -116,6 +121,7 @@ private fun Raiz(app: AppState) {
                         label = { Text(d.titulo, fontSize = 11.sp) }
                     )
                 }
+            }
             }
         }
     ) { padding ->
