@@ -23,7 +23,8 @@ jobs:
           java-version: "17"
 
       - name: Preparar el SDK de Android
-        uses: android-actions/setup-android@v3
+        # El SDK ya viene instalado en el servidor de GitHub: solo se aceptan las licencias.
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
       - name: Instalar Gradle
         uses: gradle/actions/setup-gradle@v4
