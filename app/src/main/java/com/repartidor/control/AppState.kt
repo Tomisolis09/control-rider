@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.documentfile.provider.DocumentFile
+import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -29,6 +30,66 @@ class AppState(context: Context) {
     private val manejador = Handler(Looper.getMainLooper())
     private val tareaRespaldo = Runnable { respaldarAsync() }
 
+    init {
+        restaurarInternaSiVacio()
+    }
+
+    // ---------------------------------------------------------------- copia interna (la recupera Android al reinstalar)
+    private val archivoInterno: File get() = File(appContext.filesDir, ARCHIVO_INTERNO)
+
+    private fun hayDatos(): Boolean =
+        db.one("SELECT COUNT(*) c FROM diario")!!.i("c") > 0 ||
+            db.one("SELECT COUNT(*) c FROM gastos")!!.i("c") > 0 ||
+            db.one("SELECT 1 x FROM meta WHERE id=1") != null
+
+    /**
+     * Guarda un archivo con todos los datos dentro de la app. Android lo incluye en su copia automática
+     * a la cuenta de Google, así que al reinstalar vuelve solo (ver res/xml/backup_rules.xml).
+     */
+    @Synchronized
+    private fun guardarCopiaInterna() {
+        try {
+            if (!hayDatos()) return
+            val tmp = File(appContext.filesDir, "$ARCHIVO_INTERNO.tmp")
+            tmp.writeText(Respaldo.exportar(db), Charsets.UTF_8)
+            if (!tmp.renameTo(archivoInterno)) {
+                archivoInterno.writeText(tmp.readText(Charsets.UTF_8), Charsets.UTF_8)
+                tmp.delete()
+            }
+        } catch (e: Exception) {
+            // la copia interna es un extra: si falla no se interrumpe nada
+        }
+    }
+
+    /** Si la app arranca vacía pero Android devolvió la copia interna (reinstalación), la carga. */
+    private fun restaurarInternaSiVacio() {
+        try {
+            val f = archivoInterno
+            if (f.exists() && !hayDatos()) Respaldo.importar(db, f.readText(Charsets.UTF_8))
+        } catch (e: Exception) {
+            // archivo dañado o de otra app: se ignora
+        }
+    }
+
+    /**
+     * Restaurar en un solo paso: el usuario elige la carpeta donde estaba la copia automática,
+     * se carga el archivo de esa carpeta y se vuelve a activar la copia automática en ella.
+     */
+    fun restaurarDesdeCarpeta(uri: Uri): String {
+        try {
+            val arbol = DocumentFile.fromTreeUri(appContext, uri) ?: return "No se pudo abrir esa carpeta."
+            val archivo = arbol.findFile(Respaldo.NOMBRE) ?: return "En esa carpeta no está el archivo ${Respaldo.NOMBRE}."
+            val texto = appContext.contentResolver.openInputStream(archivo.uri)?.use { String(it.readBytes(), Charsets.UTF_8) }
+                ?: return "No se pudo leer el archivo de la copia."
+            val n = Respaldo.importar(db, texto)
+            db.setCfg("respaldo_carpeta", uri.toString())
+            cambio("Datos recuperados: $n registros ✔ La copia automática quedó activada")
+            return "ok"
+        } catch (e: Exception) {
+            return "No se pudo restaurar: ${e.message ?: e.javaClass.simpleName}"
+        }
+    }
+
     /** Llamar después de cualquier escritura en la base. */
     fun cambio(mensaje: String? = null) {
         calc.invalidar()
@@ -42,15 +103,16 @@ class AppState(context: Context) {
 
     /** Espera unos segundos después del último cambio y guarda la copia en la carpeta elegida. */
     private fun programarRespaldo() {
-        if (!respaldoActivo) return
         manejador.removeCallbacks(tareaRespaldo)
         manejador.postDelayed(tareaRespaldo, 4000)
     }
 
     /** Guarda la copia en segundo plano (no traba la pantalla aunque la carpeta sea de Google Drive). */
     fun respaldarAsync() {
-        if (!respaldoActivo) return
-        Thread { respaldarAhora() }.start()
+        Thread {
+            guardarCopiaInterna()
+            if (respaldoActivo) respaldarAhora()
+        }.start()
     }
 
     @Synchronized
@@ -109,3 +171,5 @@ class AppState(context: Context) {
         cambio("Apartaste ${money(monto)} para tu meta ✔$extra")
     }
 }
+
+private const val ARCHIVO_INTERNO = "respaldo-interno.json"

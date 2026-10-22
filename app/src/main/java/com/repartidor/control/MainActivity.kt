@@ -2,6 +2,10 @@ package com.repartidor.control
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.draw.scale
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
@@ -108,7 +112,7 @@ private fun Raiz(app: AppState) {
         bottomBar = {
             androidx.compose.foundation.layout.Column {
                 BannerAnuncio()
-            NavigationBar {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                 for (d in DESTINOS) {
                     val aviso: String? = when (d.clave) {
                         "Meta" -> if (ea != null && (ea.estado == "pendiente" || ea.estado == "parcial")) "!" else null
@@ -119,11 +123,14 @@ private fun Raiz(app: AppState) {
                         selected = actual == d.clave,
                         onClick = { actual = d.clave; sub = null },
                         icon = {
+                            val esc by animateFloatAsState(
+                                if (actual == d.clave) 1.25f else 1f, spring(dampingRatio = 0.45f), label = "nav"
+                            )
                             BadgedBox(badge = { if (aviso != null) Badge { Text(aviso) } }) {
-                                Text(d.icono, fontSize = 20.sp)
+                                Text(d.icono, fontSize = 20.sp, modifier = Modifier.scale(esc))
                             }
                         },
-                        label = { Text(d.titulo, fontSize = 11.sp) }
+                        label = { Text(d.titulo, fontSize = 11.sp, fontWeight = if (actual == d.clave) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal) }
                     )
                 }
             }
@@ -152,12 +159,14 @@ private fun Raiz(app: AppState) {
                     }
                 }
             } else {
-                when (actual) {
-                    "Inicio" -> InicioScreen(app)
-                    "Diario" -> DiarioScreen(app)
-                    "Resumen" -> ResumenScreen(app)
-                    "Meta" -> MetaScreen(app)
-                    else -> MasScreen(app) { sub = it }
+                Crossfade(targetState = actual, label = "pestana") { tab ->
+                    when (tab) {
+                        "Inicio" -> InicioScreen(app)
+                        "Diario" -> DiarioScreen(app)
+                        "Resumen" -> ResumenScreen(app)
+                        "Meta" -> MetaScreen(app)
+                        else -> MasScreen(app) { sub = it }
+                    }
                 }
             }
         }

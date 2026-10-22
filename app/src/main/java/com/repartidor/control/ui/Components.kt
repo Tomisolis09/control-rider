@@ -4,7 +4,19 @@ import android.app.DatePickerDialog
 import android.graphics.Paint
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -75,35 +87,57 @@ import kotlin.math.max
 
 // ------------------------------------------------------------------ estructura
 
+/** Entrada suave: el elemento aparece subiendo y con fundido la primera vez que se muestra. */
+@Composable
+fun Modifier.aparecer(): Modifier {
+    val a = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { a.animateTo(1f, tween(450, easing = FastOutSlowInEasing)) }
+    return this.graphicsLayer {
+        alpha = a.value
+        translationY = (1f - a.value) * 24.dp.toPx()
+    }
+}
+
 @Composable
 fun Pantalla(content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
         content = content
     )
 }
 
 @Composable
 fun Titulo(texto: String, sub: String? = null) {
-    Column {
-        Text(texto, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+    Column(Modifier.aparecer()) {
+        Text(texto, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
         if (sub != null) Text(sub, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
-fun Panel(titulo: String, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+fun Panel(
+    titulo: String, modifier: Modifier = Modifier, acento: Color = MaterialTheme.colorScheme.primary,
+    content: @Composable ColumnScope.() -> Unit
+) {
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().aparecer(),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (titulo.isNotEmpty()) Text(titulo, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (titulo.isNotEmpty()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.width(4.dp).height(18.dp).clip(RoundedCornerShape(2.dp)).background(acento))
+                    Spacer(Modifier.width(8.dp))
+                    Text(titulo, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            }
             content()
         }
     }
@@ -116,18 +150,33 @@ fun Subtexto(texto: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun FilaDato(izq: String, der: String, colorDer: Color = MaterialTheme.colorScheme.onSurface, negrita: Boolean = false) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(izq, fontSize = 14.sp, fontWeight = if (negrita) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f))
-        Text(der, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colorDer)
+    if (negrita) {
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                .background(colorDer.copy(alpha = 0.10f)).padding(horizontal = 12.dp, vertical = 9.dp),
+            horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(izq, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text(der, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = colorDer)
+        }
+    } else {
+        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(izq, fontSize = 14.sp, modifier = Modifier.weight(1f))
+            Text(der, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colorDer)
+        }
     }
 }
 
 @Composable
 fun Aviso(nivel: String, texto: String) {
     val c = if (nivel == "rojo") Paleta.Rojo else Paleta.Ambar
-    Row(verticalAlignment = Alignment.Top) {
-        Text("●  ", color = c, fontSize = 13.sp)
-        Text(texto, color = c, fontSize = 13.sp)
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(c.copy(alpha = 0.10f)).padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Box(Modifier.padding(top = 5.dp).size(8.dp).clip(CircleShape).background(c))
+        Spacer(Modifier.width(10.dp))
+        Text(texto, color = c, fontSize = 13.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -136,17 +185,52 @@ fun Aviso(nivel: String, texto: String) {
 @Composable
 fun Kpi(titulo: String, valor: String, color: Color, modifier: Modifier = Modifier) {
     Card(
-        modifier = modifier,
+        modifier = modifier.aparecer(),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
-        Column {
-            Box(Modifier.fillMaxWidth().height(3.dp).background(color))
-            Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+        Column(
+            Modifier.fillMaxWidth()
+                .background(Brush.verticalGradient(listOf(color.copy(alpha = 0.16f), Color.Transparent)))
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(7.dp).clip(CircleShape).background(color))
+                Spacer(Modifier.width(6.dp))
                 Text(titulo.uppercase(), fontSize = 9.sp, fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
-                Text(valor, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+            Text(valor, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** Tarjeta grande con degradado para el número más importante de la pantalla. */
+@Composable
+fun Hero(titulo: String, saldo: Double, detalle: String, modifier: Modifier = Modifier) {
+    val deuda = saldo < -0.005
+    val animado by animateFloatAsState(targetValue = abs(saldo).toFloat(), animationSpec = tween(900), label = "hero")
+    val fin = if (deuda) Paleta.Rojo else Paleta.Verde
+    Box(
+        modifier.fillMaxWidth().aparecer().clip(RoundedCornerShape(26.dp))
+            .background(Brush.linearGradient(listOf(Paleta.Marino, fin)))
+    ) {
+        Box(
+            Modifier.align(Alignment.TopEnd).offset(x = 36.dp, y = (-36).dp).size(130.dp)
+                .clip(CircleShape).background(Color.White.copy(alpha = 0.09f))
+        )
+        Box(
+            Modifier.align(Alignment.BottomEnd).offset(x = (-30).dp, y = 40.dp).size(90.dp)
+                .clip(CircleShape).background(Color.White.copy(alpha = 0.07f))
+        )
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(titulo.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                color = Color.White.copy(alpha = 0.75f), letterSpacing = 1.2.sp)
+            Text(com.repartidor.control.money(animado.toDouble()), fontSize = 36.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+            Text(detalle, fontSize = 13.sp, color = Color.White.copy(alpha = 0.85f))
         }
     }
 }
@@ -171,15 +255,18 @@ fun FilaKpis(content: @Composable RowScope.() -> Unit) {
 
 @Composable
 fun Barra(fraccion: Float, color: Color, modifier: Modifier = Modifier) {
-    val f by animateFloatAsState(targetValue = fraccion.coerceIn(0f, 1f), animationSpec = tween(500), label = "barra")
+    val f by animateFloatAsState(targetValue = fraccion.coerceIn(0f, 1f), animationSpec = tween(700), label = "barra")
     Box(
         modifier
             .fillMaxWidth()
-            .height(10.dp)
-            .clip(RoundedCornerShape(5.dp))
+            .height(12.dp)
+            .clip(RoundedCornerShape(6.dp))
             .background(MaterialTheme.colorScheme.outline)
     ) {
-        Box(Modifier.fillMaxWidth(f).fillMaxHeight().background(color))
+        Box(
+            Modifier.fillMaxWidth(f).fillMaxHeight().clip(RoundedCornerShape(6.dp))
+                .background(Brush.horizontalGradient(listOf(color.copy(alpha = 0.65f), color)))
+        )
     }
 }
 
@@ -285,16 +372,25 @@ fun CampoFecha(fecha: LocalDate, onChange: (LocalDate) -> Unit, modifier: Modifi
     }
 }
 
-/** tipo: 0 = principal, 1 = secundario, 2 = peligro */
+/** tipo: 0 = principal, 1 = secundario, 2 = peligro. Se achica un poco al tocarlo. */
 @Composable
 fun Boton(texto: String, onClick: () -> Unit, modifier: Modifier = Modifier, tipo: Int = 0) {
+    val fuente = remember { MutableInteractionSource() }
+    val presionado by fuente.collectIsPressedAsState()
+    val esc by animateFloatAsState(if (presionado) 0.95f else 1f, spring(dampingRatio = 0.6f), label = "boton")
+    val m = modifier.scale(esc).heightIn(min = 46.dp)
+    val forma = RoundedCornerShape(14.dp)
     when (tipo) {
-        1 -> OutlinedButton(onClick = onClick, modifier = modifier) { Text(texto) }
+        1 -> OutlinedButton(onClick = onClick, modifier = m, shape = forma, interactionSource = fuente) {
+            Text(texto, fontWeight = FontWeight.SemiBold)
+        }
         2 -> Button(
-            onClick = onClick, modifier = modifier,
+            onClick = onClick, modifier = m, shape = forma, interactionSource = fuente,
             colors = ButtonDefaults.buttonColors(containerColor = Paleta.Rojo)
-        ) { Text(texto) }
-        else -> Button(onClick = onClick, modifier = modifier) { Text(texto) }
+        ) { Text(texto, fontWeight = FontWeight.SemiBold) }
+        else -> Button(onClick = onClick, modifier = m, shape = forma, interactionSource = fuente) {
+            Text(texto, fontWeight = FontWeight.SemiBold)
+        }
     }
 }
 
@@ -358,10 +454,11 @@ fun GraficoBarras(datos: List<Pair<String, Double>>, color: Color, modifier: Mod
             val cx = slot * (i + 0.5f)
             if (v != 0.0) {
                 val y1 = base + (y(v) - base) * crecer.value
-                drawRect(
+                drawRoundRect(
                     color = if (v > 0) color else Paleta.Rojo,
                     topLeft = Offset(cx - bw / 2, minOf(y1, base)),
-                    size = Size(bw, abs(y1 - base))
+                    size = Size(bw, maxOf(abs(y1 - base), 1f)),
+                    cornerRadius = CornerRadius(6f * density, 6f * density)
                 )
                 if (slot > 34f * density) {
                     texto(compacto(v), cx, if (v > 0) y1 - 4f * density else y1 + 12f * density, apagado, 9f)
@@ -457,7 +554,7 @@ fun GraficoAnillo(datos: List<Pair<String, Double>>, modifier: Modifier = Modifi
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
             datos.forEachIndexed { i, (nombre, v) ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(10.dp).background(Paleta.serie[i % Paleta.serie.size]))
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(Paleta.serie[i % Paleta.serie.size]))
                     Spacer(Modifier.width(6.dp))
                     Text("${nombre.substringBefore(" (").take(16)}  ${(v / total * 100).toInt()}%", fontSize = 12.sp)
                 }

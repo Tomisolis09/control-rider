@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12 o posterior: copia a la nube y traspaso a un teléfono nuevo -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="file" path="respaldo-interno.json" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path="respaldo-interno.json" />
+    </device-transfer>
+</data-extraction-rules>

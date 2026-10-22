@@ -1,7 +1,14 @@
 package com.repartidor.control.ui
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Text
+import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.sp
@@ -9,6 +16,7 @@ import com.repartidor.control.AppState
 import com.repartidor.control.DIAS
 import com.repartidor.control.DIAS_CORTOS
 import com.repartidor.control.diaSemana
+import com.repartidor.control.fechaCobro
 import com.repartidor.control.finDeMes
 import com.repartidor.control.fmtCorto
 import com.repartidor.control.fmtFecha
@@ -21,6 +29,28 @@ import java.time.LocalDate
 fun InicioScreen(app: AppState) {
     val hoy = LocalDate.now()
     val v = app.version
+    val ctx = LocalContext.current
+    val permisos = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+    // restaurar en un paso desde la carpeta donde estaba la copia (al reinstalar)
+    val restaurar = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+        if (uri != null) {
+            try { ctx.contentResolver.takePersistableUriPermission(uri, permisos) } catch (e: Exception) { }
+            val r = app.restaurarDesdeCarpeta(uri)
+            if (r != "ok") app.aviso = r
+        }
+    }
+    // activar la copia automática desde el aviso de Inicio
+    val activar = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                ctx.contentResolver.takePersistableUriPermission(uri, permisos)
+                app.elegirCarpetaRespaldo(uri.toString())
+                app.cambio("Copia automática activada: tus datos se guardan solos ✔")
+            } catch (e: Exception) {
+                app.aviso = "No se pudo usar esa carpeta. Elegí otra."
+            }
+        }
+    }
     val c = app.calc
 
     val tHoy = remember(v) { c.totales(hoy, hoy) }
@@ -65,13 +95,28 @@ fun InicioScreen(app: AppState) {
         )
 
         if (sinDatos) {
-            Panel("¿Reinstalaste la app?") {
-                Text("Si tenés una copia de seguridad, restaurala en Más > Ajustes y datos > Restaurar una copia. Si es tu primera vez, empezá cargando tu primer turno en Diario.", fontSize = 14.sp)
+            Panel("¿Reinstalaste la app?", acento = Paleta.Ambar) {
+                Text("Si tenías la copia automática activada, tus datos están en la carpeta que elegiste (en tu teléfono o en Google Drive). Elegila y se recupera todo de una vez.", fontSize = 14.sp)
+                Boton("Recuperar mis datos (elegir carpeta)", { restaurar.launch(null) }, Modifier.fillMaxWidth())
+                Subtexto("Si es tu primera vez, empezá cargando tu primer turno en Diario.")
+            }
+        } else if (!app.respaldoActivo) {
+            Panel("Protegé tus datos", acento = Paleta.Ambar) {
+                Text("Todavía no tenés copia automática. Elegí una carpeta (mejor si es de Google Drive) y tus datos se guardan solos: si desinstalás la app o cambiás de teléfono, los recuperás.", fontSize = 14.sp)
+                Boton("Activar copia automática", { activar.launch(null) }, Modifier.fillMaxWidth())
             }
         }
+        val finSem = periodoSemana(hoy, app.db.diaCierre).second
+        val cobroSem = fechaCobro(finSem, app.db.diaCobro)
+        Hero(
+            if (cuentaSem.total < -0.005) "Esta semana · debés a la app" else "Esta semana · a cobrar",
+            cuentaSem.total,
+            if (cuentaSem.total < -0.005) "Esta deuda pasa a la semana siguiente"
+            else "Cobrás el ${DIAS[diaSemana(cobroSem)].lowercase()} ${fmtCorto(cobroSem)}" +
+                (if (cuentaSem.arrastre < -0.005) " · incluye deuda anterior" else "")
+        )
         FilaKpis {
             SaldoKpi("Hoy", tHoy.neto, peso())
-            SaldoKpi("Semana", cuentaSem.total, peso())
             SaldoKpi("Mes", tMes.neto - descMes, peso())
         }
         FilaKpis {

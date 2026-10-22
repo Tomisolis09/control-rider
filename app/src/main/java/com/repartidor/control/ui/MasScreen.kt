@@ -101,7 +101,8 @@ fun AjustesScreen(app: AppState) {
             }
             Boton("Guardar una copia en otro lugar", { crear.launch("ControlRider-copia-" + LocalDate.now() + ".json") }, tipo = 1)
             Boton("Restaurar una copia", { abrir.launch(arrayOf("application/json", "text/plain", "*/*")) }, tipo = 1)
-            Subtexto("Al reinstalar la app: tocá Restaurar una copia y elegí el archivo ControlRider-respaldo.json de tu carpeta o de Drive. Se reemplazan los datos actuales por los de la copia.")
+            Subtexto("Al reinstalar la app: en Inicio tocá «Recuperar mis datos» y elegí la misma carpeta; vuelve todo y la copia automática queda activa. También podés usar Restaurar una copia y elegir el archivo a mano.")
+            Subtexto("Además, la app deja un archivo interno que Android guarda en tu cuenta de Google (si tenés la copia de seguridad de Google activada en los Ajustes del teléfono) y lo recupera al reinstalar.")
         }
 
         Panel("Tus datos") {
