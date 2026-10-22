@@ -1,0 +1,85 @@
+name: Compilar APK de Control Rider
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:        # permite compilar a mano desde la pestaña Actions
+
+permissions:
+  contents: write           # necesario para publicar el APK en Releases
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Preparar el SDK de Android
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Compilar el APK
+        run: |
+          set -o pipefail
+          gradle assembleRelease --no-daemon --stacktrace -Pvcode=${{ github.run_number }} 2>&1 | tee build.log
+
+      - name: Renombrar el APK
+        run: cp app/build/outputs/apk/release/app-release.apk ControlRider.apk
+
+      - name: Guardar el APK como artefacto de la compilación
+        uses: actions/upload-artifact@v4
+        with:
+          name: ControlRider-apk
+          path: ControlRider.apk
+
+      - name: Mover la etiqueta "ultima" a esta versión
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git tag -f ultima
+          git push -f origin ultima
+
+      - name: Publicar el APK en Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ultima
+          name: Control Rider (última versión)
+          body: |
+            APK de **Control Rider**, compilado automáticamente.
+            Descargá `ControlRider.apk`, abrilo en tu teléfono Android e instalalo.
+            Compilación número ${{ github.run_number }}.
+          files: ControlRider.apk
+          make_latest: true
+
+      - name: Compilar el paquete para Google Play (AAB)
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          gradle bundleRelease --no-daemon --stacktrace -Pvcode=${{ github.run_number }} 2>&1 | tee build-aab.log
+          cp app/build/outputs/bundle/release/app-release.aab ControlRider.aab
+
+      - name: Guardar el AAB como artefacto
+        if: hashFiles('ControlRider.aab') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ControlRider-aab
+          path: ControlRider.aab
+
+      - name: Guardar el registro si la compilación falló
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: registro-de-compilacion
+          path: build.log
