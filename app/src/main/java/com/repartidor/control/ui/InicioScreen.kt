@@ -53,6 +53,10 @@ fun InicioScreen(app: AppState) {
         if (resto > 0) top + ("Otros" to resto) else top
     }
 
+    val sinDatos = remember(v) {
+        app.db.one("SELECT COUNT(*) c FROM diario")!!.i("c") == 0 && app.db.one("SELECT 1 x FROM meta WHERE id=1") == null
+    }
+
     Pantalla {
         val hora = java.time.LocalTime.now().hour
         Titulo(
@@ -60,6 +64,11 @@ fun InicioScreen(app: AppState) {
             "${DIAS[diaSemana(hoy)]} ${fmtFecha(hoy)}"
         )
 
+        if (sinDatos) {
+            Panel("¿Reinstalaste la app?") {
+                Text("Si tenés una copia de seguridad, restaurala en Más > Ajustes y datos > Restaurar una copia. Si es tu primera vez, empezá cargando tu primer turno en Diario.", fontSize = 14.sp)
+            }
+        }
         FilaKpis {
             SaldoKpi("Hoy", tHoy.neto, peso())
             SaldoKpi("Semana", cuentaSem.total, peso())

@@ -66,4 +66,5 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("com.google.android.gms:play-services-ads:23.2.0")   // anuncios (AdMob)
+    implementation("androidx.documentfile:documentfile:1.0.1")           // copia de seguridad en la carpeta que elijas
 }

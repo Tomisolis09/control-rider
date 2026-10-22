@@ -24,7 +24,7 @@ import com.repartidor.control.periodoSemana
 import java.time.LocalDate
 
 @Composable
-fun DescuentosScreen(app: AppState) {
+fun DescuentosContenido(app: AppState) {
     val db = app.db
     val c = app.calc
     val v = app.version
@@ -64,10 +64,7 @@ fun DescuentosScreen(app: AppState) {
         app.cambio("Crédito agregado: cuota de ${money(cu)} por semana")
     }
 
-    Pantalla {
-        Titulo("Seguro y crédito de la app", "Lo que la plataforma (Rappi, PedidosYa, etc.) te descuenta cada semana")
-        Subtexto("Ojo: el seguro de acá es el que cobra la app de reparto. No es el seguro de tu vehículo (ese se carga en Recordatorios > Vencimientos).")
-
+    run {
         FilaKpis {
             KpiMonto("Seguro de la app esta semana", estaSemana.seguro, Paleta.Ambar, peso())
             KpiMonto("Cuota del crédito", estaSemana.credito, Paleta.Violeta, peso())
@@ -147,4 +144,14 @@ fun DescuentosScreen(app: AppState) {
             app.cambio("Descuento borrado")
         },
         onCancel = { borrar = null })
+}
+
+/** Pantalla completa (Más > Seguro de la app y crédito). El mismo contenido también está en la solapa Diario. */
+@Composable
+fun DescuentosScreen(app: AppState) {
+    Pantalla {
+        Titulo("Seguro y crédito de la app", "Lo que la plataforma (Rappi, PedidosYa, etc.) te descuenta cada semana")
+        Subtexto("Ojo: el seguro de acá es el que cobra la app de reparto. No es el seguro de tu vehículo (ese se carga en Recordatorios > Vencimientos).")
+        DescuentosContenido(app)
+    }
 }

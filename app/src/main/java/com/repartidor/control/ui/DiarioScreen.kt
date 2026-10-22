@@ -18,6 +18,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.repartidor.control.APPS
 import com.repartidor.control.AppState
+import com.repartidor.control.DIAS
+import com.repartidor.control.diaSemana
+import com.repartidor.control.fechaCobro
+import com.repartidor.control.fmtCorto
+import com.repartidor.control.periodoSemana
 import com.repartidor.control.CATEGORIAS_GASTO
 import com.repartidor.control.Row as FilaDb
 import com.repartidor.control.fmtHora
@@ -49,6 +54,7 @@ fun DiarioScreen(app: AppState) {
     var gCat by remember { mutableStateOf(CATEGORIAS_GASTO[0]) }
     var gMonto by remember { mutableStateOf("") }
     var gNota by remember { mutableStateOf("") }
+    var verDescuentos by remember { mutableStateOf(false) }
     var borrarTurno by remember { mutableStateOf<Long?>(null) }
     var borrarGasto by remember { mutableStateOf<Long?>(null) }
 
@@ -57,6 +63,7 @@ fun DiarioScreen(app: AppState) {
     val t = remember(v, fecha) { c.totales(fecha, fecha) }
     val eq = remember(v, fecha) { c.equilibrio(fecha) }
     val ea = remember(v) { c.estadoAhorro(LocalDate.now()) }
+    val cuenta = remember(v, fecha) { c.cuentaSemana(periodoSemana(fecha, db.diaCierre).second) }
     val guardado = remember(v, fecha, editando) {
         db.one(
             """SELECT COALESCE(SUM(base+adicionales+grupo+COALESCE(bono,0)),0) g, COALESCE(SUM(efectivo),0) e,
@@ -163,6 +170,31 @@ fun DiarioScreen(app: AppState) {
             KpiMonto("Gastos", t.gastos, Paleta.Rojo, peso())
             KpiMonto("Propinas", t.propinas, Paleta.Verde, peso())
         }
+
+        // ---- cuenta de la semana: arranca con la deuda anterior (o en cero) y se va moviendo con tus turnos
+        Panel("Cuenta de la semana · ${fmtCorto(cuenta.ini)} al ${fmtCorto(cuenta.fin)}") {
+            if (cuenta.arrastre < -0.005) {
+                FilaDato("Empezó con deuda de la semana anterior", "− " + money(-cuenta.arrastre), Paleta.Rojo)
+            } else {
+                FilaDato("Empezó en cero (la semana anterior no dejó deuda)", money(0.0))
+            }
+            FilaDato("+ Saldo de los turnos", money(cuenta.turnos), if (cuenta.turnos < 0) Paleta.Rojo else MaterialTheme.colorScheme.onSurface)
+            if (cuenta.seguro > 0) FilaDato("− Seguro de la app", money(cuenta.seguro), Paleta.Ambar)
+            if (cuenta.credito > 0) FilaDato("− Cuota del crédito", money(cuenta.credito), Paleta.Violeta)
+            FilaDato(
+                if (cuenta.total < -0.005) "DEBÉS A LA APP" else "A COBRAR",
+                money(kotlin.math.abs(cuenta.total)),
+                if (cuenta.total < -0.005) Paleta.Rojo else Paleta.Verde, true
+            )
+            if (cuenta.total < -0.005) {
+                Subtexto("Si la semana cierra así, esta deuda pasa a la semana siguiente y se va descontando con lo que hagas.")
+            } else {
+                val cobro = fechaCobro(cuenta.fin, db.diaCobro)
+                Subtexto("Si la semana cierra así, cobrás el ${DIAS[diaSemana(cobro)].lowercase()} ${fmtCorto(cobro)} y la semana siguiente arranca en cero.")
+            }
+            Boton(if (verDescuentos) "Ocultar seguro y crédito" else "Seguro y crédito de la app (cargar o editar)", { verDescuentos = !verDescuentos }, tipo = 1)
+        }
+        if (verDescuentos) DescuentosContenido(app)
 
         // ---- punto de equilibrio
         Panel("Punto de equilibrio del día") {

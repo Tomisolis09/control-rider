@@ -1,5 +1,6 @@
 package com.repartidor.control
 
+import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
@@ -92,6 +93,57 @@ class Db(context: Context) : SQLiteOpenHelper(context, "repartidor.db", null, 2)
         val params = arrayOfNulls<Any?>(args.size)
         for (i in args.indices) params[i] = args[i]
         writableDatabase.execSQL(sql, params)
+    }
+
+    /** Todas las filas de una tabla, con cada valor en su tipo. */
+    fun volcar(tabla: String): List<Map<String, Any?>> {
+        val out = ArrayList<Map<String, Any?>>()
+        readableDatabase.rawQuery("SELECT * FROM $tabla", null).use { c ->
+            while (c.moveToNext()) {
+                val m = LinkedHashMap<String, Any?>()
+                for (i in 0 until c.columnCount) {
+                    m[c.getColumnName(i)] = when (c.getType(i)) {
+                        Cursor.FIELD_TYPE_INTEGER -> c.getLong(i)
+                        Cursor.FIELD_TYPE_FLOAT -> c.getDouble(i)
+                        Cursor.FIELD_TYPE_NULL -> null
+                        else -> c.getString(i)
+                    }
+                }
+                out.add(m)
+            }
+        }
+        return out
+    }
+
+    /** Reemplaza el contenido de las tablas indicadas, todo o nada (si algo falla no se pierde nada). */
+    fun reemplazar(datos: Map<String, List<Map<String, Any?>>>) {
+        val columnas = HashMap<String, Set<String>>()
+        for (t in datos.keys) columnas[t] = rows("PRAGMA table_info($t)").map { it.s("name") }.toSet()
+        val bd = writableDatabase
+        bd.beginTransaction()
+        try {
+            for ((tabla, filas) in datos) {
+                bd.delete(tabla, null, null)
+                val cols = columnas[tabla] ?: emptySet()
+                for (f in filas) {
+                    val cv = ContentValues()
+                    for ((k, v) in f) {
+                        if (k !in cols) continue
+                        when (v) {
+                            null -> cv.putNull(k)
+                            is Long -> cv.put(k, v)
+                            is Int -> cv.put(k, v.toLong())
+                            is Double -> cv.put(k, v)
+                            else -> cv.put(k, v.toString())
+                        }
+                    }
+                    bd.insert(tabla, null, cv)
+                }
+            }
+            bd.setTransactionSuccessful()
+        } finally {
+            bd.endTransaction()
+        }
     }
 
     /** Inserta una fila y devuelve su id. */
