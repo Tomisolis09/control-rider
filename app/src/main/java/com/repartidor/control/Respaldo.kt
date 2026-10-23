@@ -10,7 +10,7 @@ object Respaldo {
 
     private val TABLAS = listOf(
         "diario", "gastos", "gastos_fijos", "mantenimiento", "items_custom", "meta", "config",
-        "recordatorios", "vencimientos", "aportes", "descuentos", "combustible"
+        "recordatorios", "vencimientos", "aportes", "descuentos", "combustible", "cargos_app"
     )
 
     /** Ajustes que dependen de este teléfono y no se guardan en la copia. */

@@ -26,6 +26,13 @@ private val ESQUEMA_V2 = listOf(
         monto REAL DEFAULT 0, km INTEGER, gasto_id INTEGER)"""
 )
 
+/** Versión 3: seguro y crédito de la app cargados por día (se descuentan del saldo de la semana anterior). */
+private val ESQUEMA_V3 = listOf(
+    """CREATE TABLE cargos_app(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT NOT NULL, tipo TEXT NOT NULL, monto REAL DEFAULT 0, nota TEXT)""",
+    "CREATE INDEX ix_cargos_fecha ON cargos_app(fecha)"
+)
+
 private val ESQUEMA = listOf(
     """CREATE TABLE diario(
         id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT NOT NULL, app TEXT,
@@ -53,9 +60,9 @@ private val ESQUEMA = listOf(
         id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT NOT NULL, monto REAL NOT NULL, nota TEXT)""",
     "CREATE INDEX ix_diario_fecha ON diario(fecha)",
     "CREATE INDEX ix_gastos_fecha ON gastos(fecha)"
-) + ESQUEMA_V2
+) + ESQUEMA_V2 + ESQUEMA_V3
 
-class Db(context: Context) : SQLiteOpenHelper(context, "repartidor.db", null, 2) {
+class Db(context: Context) : SQLiteOpenHelper(context, "repartidor.db", null, 3) {
 
     override fun onCreate(db: SQLiteDatabase) {
         for (sql in ESQUEMA) db.execSQL(sql)
@@ -64,6 +71,9 @@ class Db(context: Context) : SQLiteOpenHelper(context, "repartidor.db", null, 2)
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) {
             for (sql in ESQUEMA_V2) db.execSQL(sql)
+        }
+        if (oldVersion < 3) {
+            for (sql in ESQUEMA_V3) db.execSQL(sql)
         }
     }
 
@@ -176,4 +186,5 @@ class Db(context: Context) : SQLiteOpenHelper(context, "repartidor.db", null, 2)
 
     val diaCierre: Int get() = cfgI("dia_cierre", 0)   // lunes
     val diaCobro: Int get() = cfgI("dia_cobro", 3)     // jueves
+    val diaDescuento: Int get() = cfgI("auto_dia", 0).coerceIn(0, 6)   // día en que la app descuenta seguro y crédito
 }

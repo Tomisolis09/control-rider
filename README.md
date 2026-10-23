@@ -27,12 +27,11 @@ Entrá a **Actions**, abrí la corrida con la cruz roja y copiá el error del pa
 (o bajá el archivo `registro-de-compilacion`). Con ese texto se corrige el código.
 
 ## Seguro, crédito y combustible
-- **Seguro y crédito de la app** (Más > Seguro de la app y crédito): lo que la plataforma de reparto descuenta cada semana.
-  El seguro es el de la app, **no** el seguro del vehículo (ese va en Recordatorios > Vencimientos).
-  Se resta de lo que te toca cobrar (Inicio, Resumen, calendario de cobros), del plan de la meta y del punto de equilibrio.
-  El crédito se descuenta en cuotas semanales hasta terminar de pagarlo.
-- En la solapa **Diario**, el panel *Cuenta de la semana* muestra con qué empezó la semana (deuda anterior o cero), el saldo de los turnos,
-  el seguro y la cuota, y el total. Desde ahí también se cargan el seguro y el crédito.
+- **Seguro y crédito de la app** se cargan **por día** en la solapa **Diario** (panel *Seguro y crédito de la app*), el día que la app los descuenta.
+  Son los de la app, **no** el seguro del vehículo (ese va en Recordatorios > Vencimientos).
+  Lo cargado en una semana se **resta del saldo de la semana anterior**. Más > Seguro y crédito muestra el resumen y el historial.
+- **Descuento automático** (Diario o Más > Seguro y crédito): cada usuario elige el día de la semana en que la app le descuenta y los montos semanales; la app carga sola el seguro y la cuota ese día. Lo que se borra a mano no se vuelve a crear.
+- En Diario, el panel *Semana anterior* muestra su liquidación (deuda que traía + turnos − seguro − crédito) y el panel *Semana* la cuenta en curso.
 - **Combustible y costo por km** (Más > Combustible): cargá cada recarga con litros, monto y km del odómetro.
   Calcula el consumo (km/L) y cuánto te cuesta cada km, y suma la recarga a los gastos de nafta.
 
@@ -44,7 +43,10 @@ Entrá a **Actions**, abrí la corrida con la cruz roja y copiá el error del pa
 ## Cálculo
 `Saldo = base + adicionales + adicional por grupo + bono − efectivo recaudado`.
 Positivo = a cobrar; negativo = se lo debés a la app. Las propinas van aparte (no se suman ni se restan).
-**Total de la semana = deuda arrastrada + saldo de los turnos − seguro − cuota del crédito.**
+**Liquidación de una semana = deuda arrastrada + saldo de los turnos − seguro y crédito cargados en la semana siguiente.**
+- Positiva: es lo que cobrás y la semana siguiente **arranca en cero** (lo que hagas no se suma a ese saldo).
+- Negativa: es deuda con la app y **pasa a la semana siguiente**, donde se va descontando con lo que hagas.
+Ejemplo: la semana cierra con 30.000 a favor y el lunes cargás 56.000 de seguro y crédito: quedás debiendo 26.000 a la app. Si cierra con 100.000: te quedan 44.000 a cobrar.
 - Si el total es positivo, es lo que cobrás y la semana siguiente **arranca en cero**.
 - Si es negativo, es deuda con la app: **la semana siguiente arranca con esa deuda** y se va descontando con lo que hagas.
 

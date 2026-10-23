@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.documentfile.provider.DocumentFile
 import java.io.File
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -32,6 +33,7 @@ class AppState(context: Context) {
 
     init {
         restaurarInternaSiVacio()
+        aplicarAutomaticos()
     }
 
     // ---------------------------------------------------------------- copia interna (la recupera Android al reinstalar)
@@ -92,10 +94,62 @@ class AppState(context: Context) {
 
     /** Llamar después de cualquier escritura en la base. */
     fun cambio(mensaje: String? = null) {
+        aplicarAutomaticos()
         calc.invalidar()
         version++
         if (mensaje != null) aviso = mensaje
         programarRespaldo()
+    }
+
+    // ---------------------------------------------------------------- descuento automático del seguro y el crédito
+    /**
+     * Si el descuento automático está activo, carga el seguro y la cuota del crédito en cada día de la semana
+     * elegido que ya pasó desde la última revisión. Lo que el usuario borre a mano no se vuelve a crear.
+     * Devuelve cuántos descuentos cargó.
+     */
+    @Synchronized
+    fun aplicarAutomaticos(hoy: LocalDate = LocalDate.now()): Int {
+        if (db.cfgI("auto_activo", 0) == 0) return 0
+        val seguro = db.cfgD("auto_seguro", 0.0)
+        val cuota = db.cfgD("auto_credito", 0.0)
+        if (seguro <= 0 && cuota <= 0) return 0
+        val ultima = parseFecha(db.cfgS("auto_hasta", "")) ?: return 0
+        val totalCredito = db.cfgD("credito_total", 0.0)
+        var f = ultima.plusDays(1)
+        if (f.isBefore(hoy.minusDays(400))) f = hoy.minusDays(400)
+        var cargados = 0
+        while (!f.isAfter(hoy)) {
+            if (diaSemana(f) == db.diaDescuento) {
+                val fecha = f.toString()
+                if (seguro > 0 && db.one("SELECT 1 x FROM cargos_app WHERE fecha=? AND tipo='seguro'", fecha) == null) {
+                    db.exec("INSERT INTO cargos_app(fecha,tipo,monto,nota) VALUES(?,?,?,?)", fecha, "seguro", seguro, "auto")
+                    cargados++
+                }
+                if (cuota > 0 && db.one("SELECT 1 x FROM cargos_app WHERE fecha=? AND tipo='credito'", fecha) == null) {
+                    var monto = cuota
+                    if (totalCredito > 0) {
+                        val pagado = db.one("SELECT COALESCE(SUM(monto),0) m FROM cargos_app WHERE tipo='credito'")!!.d("m")
+                        monto = minOf(cuota, totalCredito - pagado)
+                    }
+                    if (monto > 0.005) {
+                        db.exec("INSERT INTO cargos_app(fecha,tipo,monto,nota) VALUES(?,?,?,?)", fecha, "credito", monto, "auto")
+                        cargados++
+                    }
+                }
+            }
+            f = f.plusDays(1)
+        }
+        db.setCfg("auto_hasta", hoy.toString())
+        return cargados
+    }
+
+    /** Se llama al abrir la app: si pasó el día del descuento mientras estaba cerrada, lo carga. */
+    fun revisarAutomaticos() {
+        if (aplicarAutomaticos() > 0) {
+            calc.invalidar()
+            version++
+            programarRespaldo()
+        }
     }
 
     // ---------------------------------------------------------------- copia de seguridad automática

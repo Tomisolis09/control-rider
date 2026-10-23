@@ -29,6 +29,10 @@ fun exportarCsv(db: Db): String {
         fila("mantenimiento", r.s("fecha"), r.s("vehiculo") + " - " + r.s("item"), "", "", "", "", "", "", "", "", "",
             dec(r.d("costo")), if (r.tiene("km")) r.i("km").toString() else "", r.s("nota"))
     }
+    for (r in db.rows("SELECT * FROM cargos_app ORDER BY fecha, id")) {
+        fila(if (r.s("tipo") == "credito") "crédito de la app" else "seguro de la app", r.s("fecha"), "", "", "", "", "", "", "", "", "", "",
+            dec(r.d("monto")), "", r.s("nota"))
+    }
     for (r in db.rows("SELECT * FROM aportes ORDER BY fecha, id")) {
         fila("aporte meta", r.s("fecha"), "", "", "", "", "", "", "", "", "", "", dec(r.d("monto")), "", r.s("nota"))
     }

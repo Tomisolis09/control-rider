@@ -127,8 +127,8 @@ fun ResumenScreen(app: AppState) {
             }
             if (!hayFilas && !semanal) Subtexto("No hay turnos cargados en este mes.")
             FilaDato("Saldo de los turnos (base + adic. + grupo + bono − efectivo)", money(t.neto), if (t.neto < 0) Paleta.Rojo else Paleta.Verde, true)
-            if (desc.seguro > 0) FilaDato("− Seguro de la app", money(desc.seguro), Paleta.Ambar)
-            if (desc.credito > 0) FilaDato("− Cuota del crédito", money(desc.credito), Paleta.Violeta)
+            if (desc.seguro > 0) FilaDato(if (semanal) "− Seguro de la app (cargado la semana siguiente)" else "− Seguro de la app", money(desc.seguro), Paleta.Ambar)
+            if (desc.credito > 0) FilaDato(if (semanal) "− Cuota del crédito (cargada la semana siguiente)" else "− Cuota del crédito", money(desc.credito), Paleta.Violeta)
             if (cuenta != null && cuenta.arrastre < -0.005) {
                 FilaDato("− Deuda con la app de la semana anterior", money(-cuenta.arrastre), Paleta.Rojo)
             }

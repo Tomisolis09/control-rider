@@ -108,16 +108,34 @@ fun InicioScreen(app: AppState) {
         }
         val finSem = periodoSemana(hoy, app.db.diaCierre).second
         val cobroSem = fechaCobro(finSem, app.db.diaCobro)
-        Hero(
-            if (cuentaSem.total < -0.005) "Esta semana · debés a la app" else "Esta semana · a cobrar",
-            cuentaSem.total,
-            if (cuentaSem.total < -0.005) "Esta deuda pasa a la semana siguiente"
-            else "Cobrás el ${DIAS[diaSemana(cobroSem)].lowercase()} ${fmtCorto(cobroSem)}" +
-                (if (cuentaSem.arrastre < -0.005) " · incluye deuda anterior" else "")
-        )
-        FilaKpis {
-            SaldoKpi("Hoy", tHoy.neto, peso())
-            SaldoKpi("Mes", tMes.neto - descMes, peso())
+        val ant = remember(v) { c.cuentaSemana(finSem.minusDays(7)) }
+        val cobroAnt = fechaCobro(ant.fin, app.db.diaCobro)
+        val usaDescuentos = remember(v) { c.descuentoEstimado(hoy).total > 0.005 }
+        if (ant.total > 0.005 && !cobroAnt.isBefore(hoy)) {
+            // la semana anterior ya cerró y falta cobrarla: es lo primero que se muestra
+            Hero(
+                "Semana anterior · a cobrar", ant.total,
+                "Cobrás el ${DIAS[diaSemana(cobroAnt)].lowercase()} ${fmtCorto(cobroAnt)}" +
+                    (if (ant.seguro + ant.credito > 0.005) " · ya descontado el seguro y el crédito"
+                    else if (usaDescuentos) " · todavía sin descontar el seguro y el crédito" else "")
+            )
+            FilaKpis {
+                SaldoKpi("Hoy", tHoy.neto, peso())
+                SaldoKpi("Esta semana", cuentaSem.total, peso())
+                SaldoKpi("Mes", tMes.neto - descMes, peso())
+            }
+        } else {
+            Hero(
+                if (cuentaSem.total < -0.005) "Esta semana · debés a la app" else "Esta semana · a favor",
+                cuentaSem.total,
+                if (cuentaSem.total < -0.005) "Esta deuda pasa a la semana siguiente"
+                else "Cobrás el ${DIAS[diaSemana(cobroSem)].lowercase()} ${fmtCorto(cobroSem)}" +
+                    (if (cuentaSem.arrastre < -0.005) " · incluye deuda anterior" else "")
+            )
+            FilaKpis {
+                SaldoKpi("Hoy", tHoy.neto, peso())
+                SaldoKpi("Mes", tMes.neto - descMes, peso())
+            }
         }
         FilaKpis {
             Kpi("Pedidos del mes", tMes.pedidos.toString(), Paleta.Ambar, peso())

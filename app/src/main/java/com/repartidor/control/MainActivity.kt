@@ -55,6 +55,11 @@ import java.time.LocalDate
 class MainActivity : ComponentActivity() {
     private lateinit var app: AppState
 
+    override fun onStart() {
+        super.onStart()
+        if (::app.isInitialized) app.revisarAutomaticos()
+    }
+
     override fun onStop() {
         super.onStop()
         if (::app.isInitialized) app.respaldarAsync()   // deja la copia al día al salir de la app

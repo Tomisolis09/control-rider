@@ -22,6 +22,7 @@ import com.repartidor.control.DIAS
 import com.repartidor.control.diaSemana
 import com.repartidor.control.fechaCobro
 import com.repartidor.control.fmtCorto
+import com.repartidor.control.fmtFecha
 import com.repartidor.control.periodoSemana
 import com.repartidor.control.CATEGORIAS_GASTO
 import com.repartidor.control.Row as FilaDb
@@ -54,7 +55,10 @@ fun DiarioScreen(app: AppState) {
     var gCat by remember { mutableStateOf(CATEGORIAS_GASTO[0]) }
     var gMonto by remember { mutableStateOf("") }
     var gNota by remember { mutableStateOf("") }
-    var verDescuentos by remember { mutableStateOf(false) }
+    var segMonto by remember { mutableStateOf("") }
+    var creMonto by remember { mutableStateOf("") }
+    var verAuto by remember { mutableStateOf(false) }
+    var borrarCargo by remember { mutableStateOf<Long?>(null) }
     var borrarTurno by remember { mutableStateOf<Long?>(null) }
     var borrarGasto by remember { mutableStateOf<Long?>(null) }
 
@@ -63,7 +67,13 @@ fun DiarioScreen(app: AppState) {
     val t = remember(v, fecha) { c.totales(fecha, fecha) }
     val eq = remember(v, fecha) { c.equilibrio(fecha) }
     val ea = remember(v) { c.estadoAhorro(LocalDate.now()) }
-    val cuenta = remember(v, fecha) { c.cuentaSemana(periodoSemana(fecha, db.diaCierre).second) }
+    val semana = periodoSemana(fecha, db.diaCierre)
+    val cuenta = remember(v, fecha) { c.cuentaSemana(semana.second) }
+    val anterior = remember(v, fecha) { c.cuentaSemana(semana.second.minusDays(7)) }
+    val tAnt = remember(v, fecha) { c.totales(anterior.ini, anterior.fin) }
+    val tSem = remember(v, fecha) { c.totales(cuenta.ini, cuenta.fin) }
+    val cargosDia = remember(v, fecha) { db.rows("SELECT * FROM cargos_app WHERE fecha=? ORDER BY id", fecha.toString()) }
+    val cargosSemana = remember(v, fecha) { c.descuentosPeriodo(semana.first, semana.second) }
     val guardado = remember(v, fecha, editando) {
         db.one(
             """SELECT COALESCE(SUM(base+adicionales+grupo+COALESCE(bono,0)),0) g, COALESCE(SUM(efectivo),0) e,
@@ -136,6 +146,21 @@ fun DiarioScreen(app: AppState) {
         app.cambio(msg)
     }
 
+    fun guardarCargos() {
+        val seg = num(segMonto)
+        val cre = num(creMonto)
+        if (seg == null || cre == null) { app.aviso = "Revisá los montos: deben ser números positivos"; return }
+        if (seg <= 0 && cre <= 0) { app.aviso = "Cargá el monto del seguro o de la cuota del crédito"; return }
+        if (seg > 0) db.exec("INSERT INTO cargos_app(fecha,tipo,monto,nota) VALUES(?,?,?,?)", fecha.toString(), "seguro", seg, "")
+        if (cre > 0) db.exec("INSERT INTO cargos_app(fecha,tipo,monto,nota) VALUES(?,?,?,?)", fecha.toString(), "credito", cre, "")
+        segMonto = ""; creMonto = ""
+        c.invalidar()
+        val a = c.cuentaSemana(semana.second.minusDays(7))
+        val msg = if (a.total < -0.005) "Descuentos cargados · quedás debiendo ${money(-a.total)} a la app"
+        else "Descuentos cargados · te queda a cobrar ${money(a.total)}"
+        app.cambio(msg)
+    }
+
     fun editar(r: FilaDb) {
         editando = r.l("id")
         appSel = r.s("app")
@@ -171,30 +196,80 @@ fun DiarioScreen(app: AppState) {
             KpiMonto("Propinas", t.propinas, Paleta.Verde, peso())
         }
 
-        // ---- cuenta de la semana: arranca con la deuda anterior (o en cero) y se va moviendo con tus turnos
-        Panel("Cuenta de la semana · ${fmtCorto(cuenta.ini)} al ${fmtCorto(cuenta.fin)}") {
+        // ---- semana anterior: se liquida con el seguro y el crédito que se cargan en esta semana
+        val hayAnterior = anterior.turnos > 0.005 || anterior.turnos < -0.005 || anterior.seguro > 0 ||
+            anterior.credito > 0 || anterior.arrastre < -0.005
+        if (hayAnterior) {
+            Panel("Semana anterior · ${fmtCorto(anterior.ini)} al ${fmtCorto(anterior.fin)}", acento = Paleta.Violeta) {
+                if (anterior.arrastre < -0.005) {
+                    FilaDato("Deuda que traía de antes", "− " + money(-anterior.arrastre), Paleta.Rojo)
+                }
+                FilaDato("+ Ganancia de sus turnos", money(tAnt.bruto))
+                if (tAnt.efectivo > 0.005) FilaDato("− Efectivo que recaudaste", money(tAnt.efectivo), Paleta.Violeta)
+                if (anterior.seguro > 0) FilaDato("− Seguro de la app (cargado esta semana)", money(anterior.seguro), Paleta.Ambar)
+                if (anterior.credito > 0) FilaDato("− Cuota del crédito (cargada esta semana)", money(anterior.credito), Paleta.Violeta)
+                if (anterior.seguro + anterior.credito <= 0.005) {
+                    Subtexto("Todavía no cargaste el seguro ni el crédito de esta semana. Cuando los cargues abajo, se descuentan de este saldo.")
+                }
+                FilaDato(
+                    if (anterior.total < -0.005) "DEBÉS A LA APP" else "A COBRAR",
+                    money(kotlin.math.abs(anterior.total)),
+                    if (anterior.total < -0.005) Paleta.Rojo else Paleta.Verde, true
+                )
+                if (anterior.total < -0.005) {
+                    Subtexto("Esta deuda pasa a la semana actual y se va descontando con lo que hagas.")
+                } else {
+                    val cobro = fechaCobro(anterior.fin, db.diaCobro)
+                    Subtexto("Cobrás el ${DIAS[diaSemana(cobro)].lowercase()} ${fmtCorto(cobro)}. La semana anterior queda cerrada y la actual arranca en cero: lo que hagas no se suma a este saldo.")
+                }
+            }
+        }
+
+        // ---- semana actual: arranca con la deuda anterior (o en cero) y se mueve con tus turnos
+        val cerrada = semana.second.isBefore(LocalDate.now())
+        Panel("Semana · ${fmtCorto(cuenta.ini)} al ${fmtCorto(cuenta.fin)}") {
             if (cuenta.arrastre < -0.005) {
                 FilaDato("Empezó con deuda de la semana anterior", "− " + money(-cuenta.arrastre), Paleta.Rojo)
             } else {
-                FilaDato("Empezó en cero (la semana anterior no dejó deuda)", money(0.0))
+                FilaDato("Empezó en cero", money(0.0))
             }
-            FilaDato("+ Saldo de los turnos", money(cuenta.turnos), if (cuenta.turnos < 0) Paleta.Rojo else MaterialTheme.colorScheme.onSurface)
-            if (cuenta.seguro > 0) FilaDato("− Seguro de la app", money(cuenta.seguro), Paleta.Ambar)
-            if (cuenta.credito > 0) FilaDato("− Cuota del crédito", money(cuenta.credito), Paleta.Violeta)
+            FilaDato("+ Ganancia de los turnos", money(tSem.bruto))
+            if (tSem.efectivo > 0.005) FilaDato("− Efectivo que recaudaste", money(tSem.efectivo), Paleta.Violeta)
+            if (cuenta.seguro > 0) FilaDato("− Seguro de la app (cargado la semana siguiente)", money(cuenta.seguro), Paleta.Ambar)
+            if (cuenta.credito > 0) FilaDato("− Cuota del crédito (cargada la semana siguiente)", money(cuenta.credito), Paleta.Violeta)
             FilaDato(
-                if (cuenta.total < -0.005) "DEBÉS A LA APP" else "A COBRAR",
+                if (cuenta.total < -0.005) (if (cerrada) "DEBÉS A LA APP" else "VAS DEBIENDO") else (if (cerrada) "A COBRAR" else "LLEVÁS A FAVOR"),
                 money(kotlin.math.abs(cuenta.total)),
                 if (cuenta.total < -0.005) Paleta.Rojo else Paleta.Verde, true
             )
-            if (cuenta.total < -0.005) {
-                Subtexto("Si la semana cierra así, esta deuda pasa a la semana siguiente y se va descontando con lo que hagas.")
-            } else {
-                val cobro = fechaCobro(cuenta.fin, db.diaCobro)
-                Subtexto("Si la semana cierra así, cobrás el ${DIAS[diaSemana(cobro)].lowercase()} ${fmtCorto(cobro)} y la semana siguiente arranca en cero.")
-            }
-            Boton(if (verDescuentos) "Ocultar seguro y crédito" else "Seguro y crédito de la app (cargar o editar)", { verDescuentos = !verDescuentos }, tipo = 1)
+            Subtexto("El seguro y el crédito de esta semana no se restan acá: se cargan el día que la app los descuenta y se restan del saldo de la semana anterior.")
         }
-        if (verDescuentos) DescuentosContenido(app)
+
+        // ---- seguro y crédito de la app, por día
+        Panel("Seguro y crédito de la app · ${fmtFecha(fecha)}", acento = Paleta.Ambar) {
+            Subtexto("Cargá lo que la app te descontó este día. Se resta del saldo de la semana anterior (no es el seguro del vehículo).")
+            Dos {
+                CampoMonto("Seguro", segMonto, { segMonto = it }, peso())
+                CampoMonto("Cuota del crédito", creMonto, { creMonto = it }, peso())
+            }
+            Boton("Guardar descuentos del día", { guardarCargos() })
+            for (r in cargosDia) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("${if (r.s("tipo") == "credito") "Crédito" else "Seguro"} · ${money(r.d("monto"))}" +
+                        (if (r.s("nota") == "auto") " · automático" else ""), fontSize = 14.sp)
+                    Boton("Borrar", { borrarCargo = r.l("id") }, tipo = 2)
+                }
+            }
+            if (cargosSemana.total > 0.005) {
+                Subtexto("Cargado en esta semana: seguro ${money(cargosSemana.seguro)} · crédito ${money(cargosSemana.credito)}")
+            }
+            Subtexto(
+                if (db.cfgI("auto_activo", 0) == 1) "Descuento automático activo: se carga solo cada ${DIAS[db.diaDescuento].lowercase()}."
+                else "Podés activar el descuento automático para que se cargue solo el día que te lo cobran."
+            )
+            Boton(if (verAuto) "Ocultar descuento automático" else "Configurar descuento automático", { verAuto = !verAuto }, tipo = 1)
+        }
+        if (verAuto) AutomaticoPanel(app)
 
         // ---- punto de equilibrio
         Panel("Punto de equilibrio del día") {
@@ -317,6 +392,13 @@ fun DiarioScreen(app: AppState) {
             app.cambio("Turno borrado")
         },
         onCancel = { borrarTurno = null })
+    Confirmar(borrarCargo != null, "Borrar descuento", "¿Borrar el descuento seleccionado? Cambia el saldo de la semana anterior.",
+        onOk = {
+            borrarCargo?.let { db.exec("DELETE FROM cargos_app WHERE id=?", it) }
+            borrarCargo = null
+            app.cambio("Descuento borrado")
+        },
+        onCancel = { borrarCargo = null })
     Confirmar(borrarGasto != null, "Borrar gasto", "¿Borrar el gasto seleccionado?",
         onOk = {
             borrarGasto?.let { db.exec("DELETE FROM gastos WHERE id=?", it) }

@@ -35,22 +35,16 @@ data class Cobro(
     val neto: Double, val propinas: Double, val descuentos: Double = 0.0, val arrastre: Double = 0.0
 )
 
-/** Regla de descuento semanal que aplica la app: seguro (indefinido) o cuota de un crédito (con total). */
-class Descuento(
-    val id: Long, val tipo: String, val monto: Double, val desde: LocalDate, val hasta: LocalDate?,
-    val total: Double, val nota: String
-)
-
 class DescSemana(val seguro: Double, val credito: Double) {
     val total: Double get() = seguro + credito
 }
 
-class CreditoEstado(val pagado: Double, val pendiente: Double, val cuotasRestantes: Int)
-
 /**
- * Cuenta de una semana con la deuda que viene de la anterior.
- * total = deuda arrastrada (negativa) + saldo de los turnos − seguro − cuota del crédito.
- * Si el total es positivo se cobra; si es negativo es deuda con la app y pasa a la semana siguiente.
+ * Liquidación de una semana. El seguro y el crédito de la app se cargan por día y se descuentan del saldo de la
+ * semana ANTERIOR: [seguro] y [credito] son los cargados durante la semana siguiente a [fin].
+ * total = deuda arrastrada (negativa) + saldo de los turnos − seguro − crédito.
+ * Si el total es positivo se cobra y la semana siguiente arranca en cero; si es negativo es deuda con la app
+ * y pasa a la semana siguiente.
  */
 class CuentaSemana(
     val ini: LocalDate, val fin: LocalDate, val turnos: Double, val seguro: Double, val credito: Double,
@@ -104,7 +98,8 @@ class Calc(val db: Db) {
     private fun primeraSemana(): LocalDate? {
         val fechas = ArrayList<LocalDate>()
         db.one("SELECT MIN(fecha) f FROM diario")?.sn("f")?.let { fechas.add(LocalDate.parse(it)) }
-        db.one("SELECT MIN(desde) f FROM descuentos")?.sn("f")?.let { fechas.add(LocalDate.parse(it)) }
+        // un descuento cargado en una semana liquida la semana anterior
+        db.one("SELECT MIN(fecha) f FROM cargos_app")?.sn("f")?.let { fechas.add(LocalDate.parse(it).minusDays(7)) }
         if (fechas.isEmpty()) return null
         val primera = fechas.reduce { a, b -> if (a.isBefore(b)) a else b }
         return periodoSemana(primera, db.diaCierre).second
@@ -210,7 +205,7 @@ class Calc(val db: Db) {
         val gastosDia = if (diasTrab > 0) t.gastos / diasTrab else 0.0
         val fondoDia = if (diasTrab > 0) fondoAporte(t.pedidos, t.bruto) / diasTrab else 0.0
         val ingresoPedido = if (t.pedidos > 0) (t.bruto + t.propinas) / t.pedidos else 0.0
-        val descDia = descuentoSemana(periodoSemana(hoy, db.diaCierre).second).total / diasSem
+        val descDia = descuentoEstimado(hoy).total / diasSem
         return Equilibrio(fijosDia + gastosDia + fondoDia + descDia, fijosDia, gastosDia, fondoDia, ingresoPedido, diasTrab, descDia)
     }
 
@@ -268,63 +263,34 @@ class Calc(val db: Db) {
             Vencimiento(it.l("id"), it.s("concepto"), f, dias, if (dias < 0) "VENCIDO" else if (dias <= 30) "Pronto" else "Ok")
         }
 
-    // ---------------------------------------------------------------- descuentos semanales de la app
-    fun descuentos(): List<Descuento> = db.rows("SELECT * FROM descuentos ORDER BY desde, id").map {
-        Descuento(
-            it.l("id"), it.s("tipo"), it.d("monto"), LocalDate.parse(it.s("desde")),
-            it.sn("hasta")?.let { h -> if (h.isEmpty()) null else LocalDate.parse(h) }, it.d("total"), it.s("nota")
-        )
-    }
-
-    /** Monto de una regla en la semana que termina el día [fin]. */
-    fun montoRegla(r: Descuento, fin: LocalDate): Double {
-        val primerFin = periodoSemana(r.desde, db.diaCierre).second
-        if (fin.isBefore(primerFin)) return 0.0
-        val hasta = r.hasta
-        if (hasta != null && fin.minusDays(6).isAfter(hasta)) return 0.0
-        if (r.tipo != "credito" || r.total <= 0) return r.monto
-        val previas = java.time.temporal.ChronoUnit.DAYS.between(primerFin, fin) / 7
-        return maxOf(0.0, minOf(r.monto, r.total - r.monto * previas))
-    }
-
-    /** Lo que la app descuenta en la semana que termina el día [fin]. */
-    fun descuentoSemana(fin: LocalDate): DescSemana {
-        var s = 0.0
-        var c = 0.0
-        for (r in descuentos()) {
-            val m = montoRegla(r, fin)
-            if (r.tipo == "credito") c += m else s += m
-        }
-        return DescSemana(s, c)
-    }
-
-    /** Suma de los descuentos de todas las semanas que terminan entre [desde] y [hasta]. */
+    // ---------------------------------------------------------------- seguro y crédito de la app (cargados por día)
+    /** Seguro y crédito cargados entre [desde] y [hasta] (por la fecha en que se cargaron). */
     fun descuentosPeriodo(desde: LocalDate, hasta: LocalDate): DescSemana {
-        var s = 0.0
-        var c = 0.0
-        var fin = periodoSemana(desde, db.diaCierre).second
-        while (!fin.isAfter(hasta)) {
-            val d = descuentoSemana(fin)
-            s += d.seguro
-            c += d.credito
-            fin = fin.plusDays(7)
-        }
-        return DescSemana(s, c)
+        val r = db.one(
+            """SELECT COALESCE(SUM(CASE WHEN tipo='seguro' THEN monto END),0) s,
+               COALESCE(SUM(CASE WHEN tipo='credito' THEN monto END),0) c
+               FROM cargos_app WHERE fecha BETWEEN ? AND ?""",
+            desde.toString(), hasta.toString()
+        )!!
+        return DescSemana(r.d("s"), r.d("c"))
     }
 
-    fun creditoEstado(r: Descuento, hoy: LocalDate): CreditoEstado {
-        var pagado = 0.0
-        var fin = periodoSemana(r.desde, db.diaCierre).second
-        var vueltas = 0
-        while (!fin.isAfter(hoy) && vueltas < 2000) {
-            pagado += montoRegla(r, fin)
-            fin = fin.plusDays(7)
-            vueltas++
-        }
-        val pendiente = maxOf(0.0, r.total - pagado)
-        val cuotas = if (r.monto > 0) Math.ceil(pendiente / r.monto).toInt() else 0
-        return CreditoEstado(pagado, pendiente, cuotas)
+    /** Lo que se descuenta de la semana que termina el día [fin]: lo cargado durante la semana siguiente. */
+    fun descuentoSemana(fin: LocalDate): DescSemana = descuentosPeriodo(fin.plusDays(1), fin.plusDays(7))
+
+    /** Descuento semanal típico (promedio de las últimas semanas con cargas), para proyecciones. */
+    fun descuentoEstimado(hoy: LocalDate): DescSemana {
+        val primero = db.one("SELECT MIN(fecha) f FROM cargos_app")?.sn("f")?.let { LocalDate.parse(it) }
+            ?: return DescSemana(0.0, 0.0)
+        val desde = if (primero.isAfter(hoy.minusDays(27))) primero else hoy.minusDays(27)
+        val semanas = (java.time.temporal.ChronoUnit.DAYS.between(desde, hoy) / 7 + 1).toInt().coerceIn(1, 4)
+        val d = descuentosPeriodo(desde, hoy)
+        return DescSemana(d.seguro / semanas, d.credito / semanas)
     }
+
+    /** Total pagado del crédito de la app según lo cargado. */
+    fun creditoPagado(): Double =
+        db.one("SELECT COALESCE(SUM(monto),0) m FROM cargos_app WHERE tipo='credito'")!!.d("m")
 
     // ---------------------------------------------------------------- combustible
     fun consumo(vehiculo: String): Consumo? {
@@ -350,12 +316,13 @@ class Calc(val db: Db) {
         val promProp = if (hist.isEmpty()) 0.0 else hist.sumOf { it.propinas } / hist.size
         val filas = ArrayList<Cobro>()
         var fin = finActual.minusDays(7)
+        val est = descuentoEstimado(hoy)
         var arrastre = 0.0   // deuda con la app que pasa a la semana siguiente (para las proyecciones)
         while (filas.size < n) {
             val cobro = fechaCobro(fin, db.diaCobro)
             val ini = fin.minusDays(6)
             if (ini.isAfter(hoy)) {
-                val d = descuentoSemana(fin).total
+                val d = est.total
                 val total = arrastre + promNeto - d
                 filas.add(Cobro(cobro, ini, fin, "Proyectada", total, promProp, d, arrastre))
                 arrastre = minOf(0.0, total)
@@ -371,7 +338,7 @@ class Calc(val db: Db) {
                     )
                 }
                 // para la semana en curso se estima cómo va a cerrar, así la proyección siguiente no se distorsiona
-                val estimado = if (enCurso) cs.arrastre + maxOf(cs.turnos, promNeto) - cs.seguro - cs.credito else cs.total
+                val estimado = if (enCurso) cs.arrastre + maxOf(cs.turnos, promNeto) - maxOf(cs.seguro + cs.credito, est.total) else cs.total
                 arrastre = minOf(0.0, estimado)
             }
             fin = fin.plusDays(7)
@@ -418,7 +385,7 @@ class Calc(val db: Db) {
         val porDia = ingreso / diasTrab
         val fijosMes = fijosReferencia(hoy)
         val fijosSem = fijosMes * 12 / 52
-        val descSem = descuentoSemana(periodoSemana(hoy, db.diaCierre).second).total
+        val descSem = descuentoEstimado(hoy).total
         val porSem = porDia * diasSem - fijosSem - descSem
         var p = base.copy(
             estado = "ok", diasTrab = diasTrab, porDia = porDia, porSemBruta = porDia * diasSem,
@@ -469,7 +436,11 @@ class Calc(val db: Db) {
             out.add("ambar" to "Arrastrás ${money(-cs.arrastre)} de deuda con la app de la semana anterior: se va descontando con lo que hagas esta semana.")
         }
         if (cs.total < -0.005) {
-            out.add("rojo" to "Esta semana vas debiendo ${money(-cs.total)} a la app (después del seguro, el crédito y la deuda anterior).")
+            out.add("rojo" to "Esta semana vas debiendo ${money(-cs.total)} a la app (contando la deuda anterior).")
+        }
+        val semHoy = periodoSemana(hoy, db.diaCierre)
+        if (descuentoEstimado(hoy).total > 0.005 && descuentosPeriodo(semHoy.first, semHoy.second).total <= 0.005) {
+            out.add("ambar" to "Todavía no cargaste el seguro y el crédito de esta semana (solapa Diario): se descuentan del saldo de la semana pasada.")
         }
         val t = totales(hoy, hoy)
         if (t.neto < -0.005) out.add("rojo" to "Hoy le debés ${money(-t.neto)} a la aplicación (el efectivo supera lo generado).")
