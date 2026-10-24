@@ -50,6 +50,7 @@ import com.repartidor.control.ui.RendimientoScreen
 import com.repartidor.control.ui.RepartidorTheme
 import com.repartidor.control.ui.ResumenScreen
 import com.repartidor.control.ui.SECCIONES_MAS
+import com.repartidor.control.ui.TiendaScreen
 import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
@@ -83,6 +84,7 @@ private val DESTINOS = listOf(
     Destino("Diario", "📝", "Diario"),
     Destino("Resumen", "📅", "Resumen"),
     Destino("Meta", "🎯", "Meta"),
+    Destino("Tienda", "🛍", "Tienda"),
     Destino("Más", "☰", "Más")
 )
 
@@ -121,6 +123,7 @@ private fun Raiz(app: AppState) {
                 for (d in DESTINOS) {
                     val aviso: String? = when (d.clave) {
                         "Meta" -> if (ea != null && (ea.estado == "pendiente" || ea.estado == "parcial")) "!" else null
+                        "Tienda" -> if (app.carrito.isNotEmpty()) app.carrito.values.sum().toString() else null
                         "Más" -> if (alertasMas > 0) alertasMas.toString() else null
                         else -> null
                     }
@@ -166,10 +169,11 @@ private fun Raiz(app: AppState) {
             } else {
                 Crossfade(targetState = actual, label = "pestana") { tab ->
                     when (tab) {
-                        "Inicio" -> InicioScreen(app)
+                        "Inicio" -> InicioScreen(app) { destino -> actual = destino; sub = null }
                         "Diario" -> DiarioScreen(app)
                         "Resumen" -> ResumenScreen(app)
                         "Meta" -> MetaScreen(app)
+                        "Tienda" -> TiendaScreen(app)
                         else -> MasScreen(app) { sub = it }
                     }
                 }

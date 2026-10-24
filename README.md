@@ -26,6 +26,15 @@ Cada vez que se sube código a GitHub, **GitHub compila el APK solo** (tarda uno
 Entrá a **Actions**, abrí la corrida con la cruz roja y copiá el error del paso *Compilar el APK*
 (o bajá el archivo `registro-de-compilacion`). Con ese texto se corrige el código.
 
+## Interfaz
+Paneles que se pliegan al tocar el título, gráficos de barras táctiles (tocá una barra para ver su valor), anillo de progreso del día,
+accesos rápidos en Inicio, racha de días trabajados, cambio de tema con un toque (🌙/☀️) y vibración suave al tocar botones.
+
+## Tienda
+Solapa **Tienda**: catálogo con buscador y categorías, carrito y pedido por **WhatsApp** (el pedido llega con el detalle y coordinás pago y entrega).
+Para poner tus productos y tu número editá `app/src/main/java/com/repartidor/control/Tienda.kt` (los productos que trae son ejemplos).
+Para un descuento alcanza con poner `precioAnterior` en el producto: se muestra tachado.
+
 ## Seguro, crédito y combustible
 - **Seguro y crédito de la app** se cargan **por día** en la solapa **Diario** (panel *Seguro y crédito de la app*), el día que la app los descuenta.
   Son los de la app, **no** el seguro del vehículo (ese va en Recordatorios > Vencimientos).

@@ -23,6 +23,8 @@ class AppState(context: Context) {
     var version by mutableIntStateOf(0)
         private set
     var aviso by mutableStateOf<String?>(null)
+    /** Carrito de la tienda: id de producto -> cantidad. Vive mientras la app está abierta. */
+    val carrito = androidx.compose.runtime.mutableStateMapOf<String, Int>()
     var tema by mutableIntStateOf(db.cfgI("tema", 0))   // 0 = sistema, 1 = claro, 2 = oscuro
 
     /** Estado de la copia automática, para mostrar en Ajustes. */

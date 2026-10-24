@@ -2,7 +2,14 @@ package com.repartidor.control.ui
 
 import android.app.DatePickerDialog
 import android.graphics.Paint
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
@@ -140,6 +147,86 @@ fun Panel(
             }
             content()
         }
+    }
+}
+
+/** Panel que se pliega y se despliega al tocar el título. Plegado muestra un [resumen] debajo del título. */
+@Composable
+fun PanelPlegable(
+    titulo: String, modifier: Modifier = Modifier, acento: Color = MaterialTheme.colorScheme.primary,
+    abierto0: Boolean = true, resumen: String = "", content: @Composable ColumnScope.() -> Unit
+) {
+    var abierto by remember { mutableStateOf(abierto0) }
+    val giro by animateFloatAsState(if (abierto) 90f else 0f, spring(dampingRatio = 0.7f), label = "giro")
+    val haptic = LocalHapticFeedback.current
+    Card(
+        modifier = modifier.fillMaxWidth().aparecer(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    ) {
+        Column(Modifier.animateContentSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                Modifier.fillMaxWidth().clickable {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    abierto = !abierto
+                },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(Modifier.width(4.dp).height(18.dp).clip(RoundedCornerShape(2.dp)).background(acento))
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(titulo, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    if (!abierto && resumen.isNotEmpty()) {
+                        Text(resumen, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Text("›", fontSize = 24.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.graphicsLayer { rotationZ = giro })
+            }
+            if (abierto) content()
+        }
+    }
+}
+
+/** Anillo de progreso animado con un texto en el centro. */
+@Composable
+fun Anillo(fraccion: Float, color: Color, centro: String, modifier: Modifier = Modifier, tam: Int = 104) {
+    val f by animateFloatAsState(targetValue = fraccion.coerceIn(0f, 1f), animationSpec = tween(900), label = "anillo")
+    val pista = MaterialTheme.colorScheme.outline
+    val letra = MaterialTheme.colorScheme.onSurface
+    Canvas(modifier.size(tam.dp)) {
+        val g = 12f * density
+        val lado = size.minDimension - g
+        val arriba = Offset(g / 2, g / 2)
+        drawArc(pista, -90f, 360f, false, topLeft = arriba, size = Size(lado, lado), style = Stroke(width = g, cap = StrokeCap.Round))
+        if (f > 0.005f) {
+            drawArc(color, -90f, 360f * f, false, topLeft = arriba, size = Size(lado, lado), style = Stroke(width = g, cap = StrokeCap.Round))
+        }
+        texto(centro, size.width / 2, size.height / 2 + 6f * density, letra, 17f)
+    }
+}
+
+/** Atajo grande y tocable (ícono + texto) que rebota al apretarlo. */
+@Composable
+fun Accion(icono: String, texto: String, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val fuente = remember { MutableInteractionSource() }
+    val presionado by fuente.collectIsPressedAsState()
+    val esc by animateFloatAsState(if (presionado) 0.92f else 1f, spring(dampingRatio = 0.55f), label = "accion")
+    val haptic = LocalHapticFeedback.current
+    Column(
+        modifier.scale(esc).clip(RoundedCornerShape(18.dp)).background(color.copy(alpha = 0.14f))
+            .clickable(interactionSource = fuente, indication = null) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onClick()
+            }
+            .padding(vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(icono, fontSize = 24.sp)
+        Text(texto, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
 }
 
@@ -374,12 +461,17 @@ fun CampoFecha(fecha: LocalDate, onChange: (LocalDate) -> Unit, modifier: Modifi
 
 /** tipo: 0 = principal, 1 = secundario, 2 = peligro. Se achica un poco al tocarlo. */
 @Composable
-fun Boton(texto: String, onClick: () -> Unit, modifier: Modifier = Modifier, tipo: Int = 0) {
+fun Boton(texto: String, onClick0: () -> Unit, modifier: Modifier = Modifier, tipo: Int = 0) {
     val fuente = remember { MutableInteractionSource() }
     val presionado by fuente.collectIsPressedAsState()
     val esc by animateFloatAsState(if (presionado) 0.95f else 1f, spring(dampingRatio = 0.6f), label = "boton")
     val m = modifier.scale(esc).heightIn(min = 46.dp)
     val forma = RoundedCornerShape(14.dp)
+    val haptic = LocalHapticFeedback.current
+    val onClick: () -> Unit = {
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        onClick0()
+    }
     when (tipo) {
         1 -> OutlinedButton(onClick = onClick, modifier = m, shape = forma, interactionSource = fuente) {
             Text(texto, fontWeight = FontWeight.SemiBold)
@@ -429,12 +521,24 @@ private fun compacto(v: Double): String {
 fun GraficoBarras(datos: List<Pair<String, Double>>, color: Color, modifier: Modifier = Modifier, alto: Int = 150) {
     val apagado = MaterialTheme.colorScheme.onSurfaceVariant
     val linea = MaterialTheme.colorScheme.outline
+    val fuerte = MaterialTheme.colorScheme.onSurface
     val crecer = remember { Animatable(0f) }
+    var sel by remember { mutableStateOf(-1) }
     LaunchedEffect(datos) {
+        sel = -1
         crecer.snapTo(0f)
         crecer.animateTo(1f, tween(600))
     }
-    Canvas(modifier.fillMaxWidth().height(alto.dp)) {
+    Canvas(
+        modifier.fillMaxWidth().height(alto.dp).pointerInput(datos) {
+            detectTapGestures { o ->
+                if (datos.isNotEmpty()) {
+                    val i = (o.x / (size.width.toFloat() / datos.size)).toInt().coerceIn(0, datos.size - 1)
+                    sel = if (sel == i) -1 else i
+                }
+            }
+        }
+    ) {
         if (datos.isEmpty() || datos.all { it.second == 0.0 }) {
             texto("Sin datos para mostrar", size.width / 2, size.height / 2, apagado, 12f)
             return@Canvas
@@ -455,12 +559,15 @@ fun GraficoBarras(datos: List<Pair<String, Double>>, color: Color, modifier: Mod
             if (v != 0.0) {
                 val y1 = base + (y(v) - base) * crecer.value
                 drawRoundRect(
-                    color = if (v > 0) color else Paleta.Rojo,
+                    color = (if (v > 0) color else Paleta.Rojo).copy(alpha = if (sel < 0 || sel == i) 1f else 0.4f),
                     topLeft = Offset(cx - bw / 2, minOf(y1, base)),
                     size = Size(bw, maxOf(abs(y1 - base), 1f)),
                     cornerRadius = CornerRadius(6f * density, 6f * density)
                 )
-                if (slot > 34f * density) {
+                if (i == sel) {
+                    texto(money0(v), cx.coerceIn(34f * density, size.width - 34f * density),
+                        if (v > 0) y1 - 4f * density else y1 + 14f * density, fuerte, 11f)
+                } else if (sel < 0 && slot > 34f * density) {
                     texto(compacto(v), cx, if (v > 0) y1 - 4f * density else y1 + 12f * density, apagado, 9f)
                 }
             }

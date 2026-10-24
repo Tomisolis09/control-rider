@@ -272,7 +272,10 @@ fun DiarioScreen(app: AppState) {
         if (verAuto) AutomaticoPanel(app)
 
         // ---- punto de equilibrio
-        Panel("Punto de equilibrio del día") {
+        PanelPlegable(
+            "Punto de equilibrio del día", abierto0 = false,
+            resumen = if (eq.objetivo > 0) "Llevás ${(llevo / eq.objetivo * 100).toInt()}% de ${money0(eq.objetivo)}" else "Sin datos todavía"
+        ) {
             if (eq.objetivo <= 0) {
                 Text("Todavía no hay datos para calcularlo.", fontSize = 14.sp)
                 Subtexto("Cargá gastos fijos del hogar y algunos turnos con sus gastos.")
@@ -297,7 +300,11 @@ fun DiarioScreen(app: AppState) {
         }
 
         // ---- caja de efectivo en vivo
-        Panel("Caja de efectivo en vivo") {
+        PanelPlegable(
+            "Caja de efectivo en vivo", abierto0 = false,
+            resumen = if (gen <= 0 && efecVivo <= 0) "Sin movimientos todavía"
+            else if (efecVivo > gen) "Estás debiendo ${money(efecVivo - gen)} a la app" else "Margen disponible: ${money(gen - efecVivo)}"
+        ) {
             if (gen <= 0 && efecVivo <= 0) {
                 Text("Sin movimientos todavía.", fontSize = 14.sp)
                 Subtexto("Se actualiza mientras escribís base, adicionales, bono y efectivo.")
@@ -366,7 +373,7 @@ fun DiarioScreen(app: AppState) {
         }
 
         // ---- gastos del día
-        Panel("Gastos del día") {
+        PanelPlegable("Gastos del día", abierto0 = false, resumen = "${gastos.size} gasto${if (gastos.size == 1) "" else "s"} · ${money(t.gastos)}") {
             Selector("Categoría", CATEGORIAS_GASTO, gCat, { gCat = it })
             Dos {
                 CampoMonto("Monto", gMonto, { gMonto = it }, peso())

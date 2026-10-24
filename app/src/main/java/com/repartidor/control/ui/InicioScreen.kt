@@ -4,7 +4,19 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Text
@@ -26,7 +38,7 @@ import com.repartidor.control.periodoSemana
 import java.time.LocalDate
 
 @Composable
-fun InicioScreen(app: AppState) {
+fun InicioScreen(app: AppState, irA: (String) -> Unit = {}) {
     val hoy = LocalDate.now()
     val v = app.version
     val ctx = LocalContext.current
@@ -83,16 +95,44 @@ fun InicioScreen(app: AppState) {
         if (resto > 0) top + ("Otros" to resto) else top
     }
 
+    val racha = remember(v) {
+        val fechas = app.db.rows("SELECT DISTINCT fecha FROM diario WHERE fecha<=? ORDER BY fecha DESC LIMIT 90", hoy.toString())
+            .map { LocalDate.parse(it.s("fecha")) }
+        var dia = if (fechas.firstOrNull() == hoy) hoy else hoy.minusDays(1)
+        var n = 0
+        for (f in fechas) {
+            if (f == dia) { n++; dia = dia.minusDays(1) } else if (f.isBefore(dia)) break
+        }
+        n
+    }
+    val eqHoy = remember(v) { c.equilibrio(hoy) }
+    val oscuro = app.tema == 2 || (app.tema == 0 && isSystemInDarkTheme())
+
     val sinDatos = remember(v) {
         app.db.one("SELECT COUNT(*) c FROM diario")!!.i("c") == 0 && app.db.one("SELECT 1 x FROM meta WHERE id=1") == null
     }
 
     Pantalla {
         val hora = java.time.LocalTime.now().hour
-        Titulo(
-            if (hora < 12) "Buen día" else if (hora < 20) "Buenas tardes" else "Buenas noches",
-            "${DIAS[diaSemana(hoy)]} ${fmtFecha(hoy)}"
-        )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) {
+                Titulo(
+                    if (hora < 12) "Buen día" else if (hora < 20) "Buenas tardes" else "Buenas noches",
+                    "${DIAS[diaSemana(hoy)]} ${fmtFecha(hoy)}"
+                )
+            }
+            Text(
+                if (oscuro) "☀️" else "🌙", fontSize = 26.sp,
+                modifier = Modifier.clip(RoundedCornerShape(14.dp)).clickable { app.cambiarTema(if (oscuro) 1 else 2) }.padding(8.dp)
+            )
+        }
+        if (racha >= 2) {
+            Text(
+                "🔥 $racha días seguidos trabajando", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Paleta.Ambar,
+                modifier = Modifier.clip(RoundedCornerShape(14.dp)).background(Paleta.Ambar.copy(alpha = 0.14f))
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+        }
 
         if (sinDatos) {
             Panel("¿Reinstalaste la app?", acento = Paleta.Ambar) {
@@ -111,8 +151,10 @@ fun InicioScreen(app: AppState) {
         val ant = remember(v) { c.cuentaSemana(finSem.minusDays(7)) }
         val cobroAnt = fechaCobro(ant.fin, app.db.diaCobro)
         val usaDescuentos = remember(v) { c.descuentoEstimado(hoy).total > 0.005 }
-        if (ant.total > 0.005 && !cobroAnt.isBefore(hoy)) {
-            // la semana anterior ya cerró y falta cobrarla: es lo primero que se muestra
+        val cobroPendiente = ant.total > 0.005 && !cobroAnt.isBefore(hoy)
+        val sinDescontar = usaDescuentos && ant.seguro + ant.credito <= 0.005
+        if (cobroPendiente && sinDescontar) {
+            // la semana anterior cerró pero todavía no se le descontó el seguro y el crédito: se muestra primero
             Hero(
                 "Semana anterior · a cobrar", ant.total,
                 "Cobrás el ${DIAS[diaSemana(cobroAnt)].lowercase()} ${fmtCorto(cobroAnt)}" +
@@ -136,6 +178,16 @@ fun InicioScreen(app: AppState) {
                 SaldoKpi("Hoy", tHoy.neto, peso())
                 SaldoKpi("Mes", tMes.neto - descMes, peso())
             }
+            if (cobroPendiente) {
+                // la semana anterior ya quedó liquidada: la nueva arranca en cero y ese saldo se cobra aparte
+                Panel("Pendiente de cobro", acento = Paleta.Verde) {
+                    FilaDato(
+                        "Semana ${fmtCorto(ant.ini)} al ${fmtCorto(ant.fin)} · cobrás el ${DIAS[diaSemana(cobroAnt)].lowercase()} ${fmtCorto(cobroAnt)}",
+                        money(ant.total), Paleta.Verde, true
+                    )
+                    Subtexto((if (ant.seguro + ant.credito > 0.005) "Ya está descontado el seguro y el crédito. " else "") + "La semana nueva arranca en cero y no se suma a este saldo.")
+                }
+            }
         }
         FilaKpis {
             Kpi("Pedidos del mes", tMes.pedidos.toString(), Paleta.Ambar, peso())
@@ -144,6 +196,27 @@ fun InicioScreen(app: AppState) {
         FilaKpis {
             KpiMonto("Efectivo recaudado · mes", tMes.efectivo, Paleta.Violeta, peso())
             KpiMonto("Gastos del mes", tMes.gastos, Paleta.Rojo, peso())
+        }
+
+        if (eqHoy.objetivo > 0) {
+            val llevo = tHoy.bruto + tHoy.propinas
+            val pct = llevo / eqHoy.objetivo
+            Panel("Tu día de hoy", acento = if (pct >= 1) Paleta.Verde else Paleta.Ambar) {
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Anillo(pct.toFloat(), if (pct >= 1) Paleta.Verde else Paleta.Ambar, "${(pct * 100).toInt()}%")
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Llevás ${money0(llevo)} de ${money0(eqHoy.objetivo)}", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        if (pct >= 1) Text("✔ Gastos cubiertos. Excedente: ${money0(llevo - eqHoy.objetivo)}", fontSize = 13.sp, color = Paleta.Verde)
+                        else Subtexto("Te faltan ${money0(eqHoy.objetivo - llevo)} para cubrir tus gastos del día.")
+                    }
+                }
+            }
+        }
+
+        FilaKpis {
+            Accion("📝", "Cargar turno", Paleta.Acento, peso()) { irA("Diario") }
+            Accion("🛍", "Tienda", Paleta.Ambar, peso()) { irA("Tienda") }
+            Accion("🎯", "Mi meta", Paleta.Verde, peso()) { irA("Meta") }
         }
 
         Panel("Alertas") {
