@@ -77,7 +77,7 @@ fun DescuentosScreen(app: AppState) {
 
     Pantalla {
         Titulo("Seguro y crédito de la app", "Lo que la plataforma te descuenta, cargado por día")
-        Subtexto("Se cargan en la solapa Diario, en el día que la app los descuenta. Ese monto se resta del saldo de la semana anterior. El seguro de acá es el de la app de reparto, no el de tu vehículo.")
+        Subtexto("Se cargan en la solapa Diario, en el día que la app los descuenta. Ese monto se resta del saldo de la semana en que se carga. El seguro de acá es el de la app de reparto, no el de tu vehículo.")
 
         FilaKpis {
             KpiMonto("Seguro este mes", mes.seguro, Paleta.Ambar, peso())
@@ -120,7 +120,7 @@ fun DescuentosScreen(app: AppState) {
         }
     }
 
-    Confirmar(borrar != null, "Borrar descuento", "¿Borrar este descuento? Cambia el saldo de la semana anterior.",
+    Confirmar(borrar != null, "Borrar descuento", "¿Borrar este descuento? Cambia el saldo de esa semana.",
         onOk = {
             borrar?.let { db.exec("DELETE FROM cargos_app WHERE id=?", it) }
             borrar = null

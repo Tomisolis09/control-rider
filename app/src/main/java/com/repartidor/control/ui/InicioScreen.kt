@@ -148,46 +148,15 @@ fun InicioScreen(app: AppState, irA: (String) -> Unit = {}) {
         }
         val finSem = periodoSemana(hoy, app.db.diaCierre).second
         val cobroSem = fechaCobro(finSem, app.db.diaCobro)
-        val ant = remember(v) { c.cuentaSemana(finSem.minusDays(7)) }
-        val cobroAnt = fechaCobro(ant.fin, app.db.diaCobro)
-        val usaDescuentos = remember(v) { c.descuentoEstimado(hoy).total > 0.005 }
-        val cobroPendiente = ant.total > 0.005 && !cobroAnt.isBefore(hoy)
-        val sinDescontar = usaDescuentos && ant.seguro + ant.credito <= 0.005
-        if (cobroPendiente && sinDescontar) {
-            // la semana anterior cerró pero todavía no se le descontó el seguro y el crédito: se muestra primero
-            Hero(
-                "Semana anterior · a cobrar", ant.total,
-                "Cobrás el ${DIAS[diaSemana(cobroAnt)].lowercase()} ${fmtCorto(cobroAnt)}" +
-                    (if (ant.seguro + ant.credito > 0.005) " · ya descontado el seguro y el crédito"
-                    else if (usaDescuentos) " · todavía sin descontar el seguro y el crédito" else "")
-            )
-            FilaKpis {
-                SaldoKpi("Hoy", tHoy.neto, peso())
-                SaldoKpi("Esta semana", cuentaSem.total, peso())
-                SaldoKpi("Mes", tMes.neto - descMes, peso())
-            }
-        } else {
-            Hero(
-                if (cuentaSem.total < -0.005) "Esta semana · debés a la app" else "Esta semana · a favor",
-                cuentaSem.total,
-                if (cuentaSem.total < -0.005) "Esta deuda pasa a la semana siguiente"
-                else "Cobrás el ${DIAS[diaSemana(cobroSem)].lowercase()} ${fmtCorto(cobroSem)}" +
-                    (if (cuentaSem.arrastre < -0.005) " · incluye deuda anterior" else "")
-            )
-            FilaKpis {
-                SaldoKpi("Hoy", tHoy.neto, peso())
-                SaldoKpi("Mes", tMes.neto - descMes, peso())
-            }
-            if (cobroPendiente) {
-                // la semana anterior ya quedó liquidada: la nueva arranca en cero y ese saldo se cobra aparte
-                Panel("Pendiente de cobro", acento = Paleta.Verde) {
-                    FilaDato(
-                        "Semana ${fmtCorto(ant.ini)} al ${fmtCorto(ant.fin)} · cobrás el ${DIAS[diaSemana(cobroAnt)].lowercase()} ${fmtCorto(cobroAnt)}",
-                        money(ant.total), Paleta.Verde, true
-                    )
-                    Subtexto((if (ant.seguro + ant.credito > 0.005) "Ya está descontado el seguro y el crédito. " else "") + "La semana nueva arranca en cero y no se suma a este saldo.")
-                }
-            }
+        Hero(
+            if (cuentaSem.total < -0.005) "Esta semana · debés a la app" else "Esta semana · a cobrar",
+            cuentaSem.total,
+            if (cuentaSem.total < -0.005) "Es lo que le debés a la app en esta semana"
+            else "Cobrás el ${DIAS[diaSemana(cobroSem)].lowercase()} ${fmtCorto(cobroSem)}"
+        )
+        FilaKpis {
+            SaldoKpi("Hoy", tHoy.neto, peso())
+            SaldoKpi("Mes", tMes.neto - descMes, peso())
         }
         FilaKpis {
             Kpi("Pedidos del mes", tMes.pedidos.toString(), Paleta.Ambar, peso())
@@ -240,7 +209,7 @@ fun InicioScreen(app: AppState, irA: (String) -> Unit = {}) {
                     )
                     Subtexto("Semana ${fmtCorto(cb.ini)} al ${fmtCorto(cb.fin)} · propinas $pref${money(cb.propinas)}" +
                         (if (cb.descuentos > 0) " · descuentos ${money(cb.descuentos)}" else "") +
-                        (if (cb.arrastre < -0.005) " · deuda anterior ${money(-cb.arrastre)}" else ""))
+                        "")
                 }
             }
             Subtexto("Cerrada = ya terminó · En curso = parcial · Proyectada (~) = promedio de tus últimas semanas.")

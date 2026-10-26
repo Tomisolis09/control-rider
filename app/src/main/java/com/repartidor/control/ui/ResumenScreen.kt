@@ -50,14 +50,6 @@ fun ResumenScreen(app: AppState) {
     val dias = remember(v, modo, ref) { c.porDia(d, h).associateBy { it.fecha } }
     val desc = remember(v, modo, ref) { if (semanal) c.descuentoSemana(h) else c.descuentosPeriodo(d, h) }
     val cuenta = remember(v, modo, ref) { if (semanal) c.cuentaSemana(h) else null }
-    val deudaCierre = remember(v, modo, ref) {
-        if (semanal) 0.0 else {
-            var fin = periodoSemana(d, db.diaCierre).second
-            var ultima = fin
-            while (!fin.isAfter(h)) { ultima = fin; fin = fin.plusDays(7) }
-            c.cuentaSemana(ultima).deuda
-        }
-    }
     val aCobrar = if (cuenta != null) cuenta.total else t.neto - desc.total
 
     fun mover(n: Int) {
@@ -127,18 +119,9 @@ fun ResumenScreen(app: AppState) {
             }
             if (!hayFilas && !semanal) Subtexto("No hay turnos cargados en este mes.")
             FilaDato("Saldo de los turnos (base + adic. + grupo + bono − efectivo)", money(t.neto), if (t.neto < 0) Paleta.Rojo else Paleta.Verde, true)
-            if (desc.seguro > 0) FilaDato(if (semanal) "− Seguro de la app (cargado la semana siguiente)" else "− Seguro de la app", money(desc.seguro), Paleta.Ambar)
-            if (desc.credito > 0) FilaDato(if (semanal) "− Cuota del crédito (cargada la semana siguiente)" else "− Cuota del crédito", money(desc.credito), Paleta.Violeta)
-            if (cuenta != null && cuenta.arrastre < -0.005) {
-                FilaDato("− Deuda con la app de la semana anterior", money(-cuenta.arrastre), Paleta.Rojo)
-            }
+            if (desc.seguro > 0) FilaDato("− Seguro de la app", money(desc.seguro), Paleta.Ambar)
+            if (desc.credito > 0) FilaDato("− Cuota del crédito", money(desc.credito), Paleta.Violeta)
             FilaDato(if (aCobrar < 0) "LE DEBÉS A LA APP" else "A COBRAR", money(kotlin.math.abs(aCobrar)), if (aCobrar < 0) Paleta.Rojo else Paleta.Verde, true)
-            if (semanal && aCobrar < -0.005) {
-                Text("Esta deuda pasa a la semana siguiente y se va descontando con lo que hagas.", color = Paleta.Rojo, fontSize = 13.sp)
-            }
-            if (!semanal && deudaCierre > 0.005) {
-                FilaDato("Deuda con la app al cierre del mes", money(deudaCierre), Paleta.Rojo)
-            }
             Subtexto("Si es negativo, le debés esa diferencia a la app. Las propinas no se suman ni se restan.")
         }
 

@@ -184,7 +184,7 @@ class Db(context: Context) : SQLiteOpenHelper(context, "repartidor.db", null, 3)
     fun cfgD(k: String, def: Double): Double = cfgS(k, def.toString()).toDoubleOrNull() ?: def
     fun setCfg(k: String, v: Any) = exec("INSERT OR REPLACE INTO config(clave, valor) VALUES(?,?)", k, v.toString())
 
-    val diaCierre: Int get() = cfgI("dia_cierre", 0)   // lunes
+    val diaCierre: Int get() = cfgI("dia_cierre", 6)   // domingo (se cambia en Resumen)
     val diaCobro: Int get() = cfgI("dia_cobro", 3)     // jueves
     val diaDescuento: Int get() = cfgI("auto_dia", 0).coerceIn(0, 6)   // día en que la app descuenta seguro y crédito
 }

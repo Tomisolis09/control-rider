@@ -40,11 +40,10 @@ class DescSemana(val seguro: Double, val credito: Double) {
 }
 
 /**
- * Liquidación de una semana. El seguro y el crédito de la app se cargan por día y se descuentan del saldo de la
- * semana ANTERIOR: [seguro] y [credito] son los cargados durante la semana siguiente a [fin].
- * total = deuda arrastrada (negativa) + saldo de los turnos − seguro − crédito.
- * Si el total es positivo se cobra y la semana siguiente arranca en cero; si es negativo es deuda con la app
- * y pasa a la semana siguiente.
+ * Cuenta de una semana. El seguro y el crédito de la app se cargan por día: [seguro] y [credito] son los cargados
+ * dentro de la semana. [arrastre] es siempre 0: cada semana arranca en cero.
+ * total = saldo de los turnos (ganancia − efectivo) − seguro − crédito.
+ * Si el total es positivo se cobra; si es negativo es lo que se le debe a la app en esa semana.
  */
 class CuentaSemana(
     val ini: LocalDate, val fin: LocalDate, val turnos: Double, val seguro: Double, val credito: Double,
@@ -83,57 +82,18 @@ data class Plan(
 /** Toda la lógica de cálculo de la app (portada de la versión de escritorio). */
 class Calc(val db: Db) {
 
-    // ---------------------------------------------------------------- cuenta semanal (deuda que pasa a la semana siguiente)
-    private val serie = HashMap<LocalDate, CuentaSemana>()
-    private var ultimoFin: LocalDate? = null
-    private var arrastreSiguiente = 0.0
+    // ---------------------------------------------------------------- cuenta semanal (cada semana arranca en cero)
+    /** Ya no hay nada guardado entre llamadas; se mantiene para que las pantallas puedan avisar que cambiaron los datos. */
+    fun invalidar() {}
 
-    /** Descarta lo calculado: se llama cada vez que cambian los datos. */
-    fun invalidar() {
-        serie.clear()
-        ultimoFin = null
-        arrastreSiguiente = 0.0
-    }
-
-    private fun primeraSemana(): LocalDate? {
-        val fechas = ArrayList<LocalDate>()
-        db.one("SELECT MIN(fecha) f FROM diario")?.sn("f")?.let { fechas.add(LocalDate.parse(it)) }
-        // un descuento cargado en una semana liquida la semana anterior
-        db.one("SELECT MIN(fecha) f FROM cargos_app")?.sn("f")?.let { fechas.add(LocalDate.parse(it).minusDays(7)) }
-        if (fechas.isEmpty()) return null
-        val primera = fechas.reduce { a, b -> if (a.isBefore(b)) a else b }
-        return periodoSemana(primera, db.diaCierre).second
-    }
-
-    private fun semanaSola(fin: LocalDate): CuentaSemana {
+    /**
+     * Cuenta de la semana que termina el día [fin]. Cada semana arranca en cero: no arrastra saldo ni deuda de la anterior.
+     * El seguro y el crédito son los cargados dentro de la misma semana.
+     */
+    fun cuentaSemana(fin: LocalDate): CuentaSemana {
         val ini = fin.minusDays(6)
         val d = descuentoSemana(fin)
         return CuentaSemana(ini, fin, totales(ini, fin).neto, d.seguro, d.credito, 0.0)
-    }
-
-    /**
-     * Cuenta de la semana que termina el día [fin]. La deuda con la app de las semanas anteriores
-     * se arrastra: se va descontando con lo que se hace en las semanas siguientes.
-     */
-    fun cuentaSemana(fin: LocalDate): CuentaSemana {
-        serie[fin]?.let { return it }
-        val primero = primeraSemana()
-        if (primero == null || fin.isBefore(primero)) return semanaSola(fin)
-        if (ultimoFin == null) {
-            ultimoFin = primero.minusDays(7)
-            arrastreSiguiente = 0.0
-        }
-        var f = ultimoFin!!
-        while (f.isBefore(fin)) {
-            f = f.plusDays(7)
-            val ini = f.minusDays(6)
-            val d = descuentoSemana(f)
-            val cs = CuentaSemana(ini, f, totales(ini, f).neto, d.seguro, d.credito, arrastreSiguiente)
-            serie[f] = cs
-            arrastreSiguiente = minOf(0.0, cs.total)
-            ultimoFin = f
-        }
-        return serie[fin] ?: semanaSola(fin)
     }
 
     // ---------------------------------------------------------------- totales
@@ -275,8 +235,8 @@ class Calc(val db: Db) {
         return DescSemana(r.d("s"), r.d("c"))
     }
 
-    /** Lo que se descuenta de la semana que termina el día [fin]: lo cargado durante la semana siguiente. */
-    fun descuentoSemana(fin: LocalDate): DescSemana = descuentosPeriodo(fin.plusDays(1), fin.plusDays(7))
+    /** Lo que se descuenta en la semana que termina el día [fin]: lo cargado dentro de esa semana. */
+    fun descuentoSemana(fin: LocalDate): DescSemana = descuentosPeriodo(fin.minusDays(6), fin)
 
     /** Descuento semanal típico (promedio de las últimas semanas con cargas), para proyecciones. */
     fun descuentoEstimado(hoy: LocalDate): DescSemana {
@@ -317,15 +277,13 @@ class Calc(val db: Db) {
         val filas = ArrayList<Cobro>()
         var fin = finActual.minusDays(7)
         val est = descuentoEstimado(hoy)
-        var arrastre = 0.0   // deuda con la app que pasa a la semana siguiente (para las proyecciones)
         while (filas.size < n) {
             val cobro = fechaCobro(fin, db.diaCobro)
             val ini = fin.minusDays(6)
             if (ini.isAfter(hoy)) {
                 val d = est.total
-                val total = arrastre + promNeto - d
-                filas.add(Cobro(cobro, ini, fin, "Proyectada", total, promProp, d, arrastre))
-                arrastre = minOf(0.0, total)
+                val total = promNeto - d
+                filas.add(Cobro(cobro, ini, fin, "Proyectada", total, promProp, d, 0.0))
             } else {
                 val cs = cuentaSemana(fin)
                 val enCurso = !fin.isBefore(hoy)
@@ -333,13 +291,10 @@ class Calc(val db: Db) {
                     filas.add(
                         Cobro(
                             cobro, ini, fin, if (enCurso) "En curso" else "Cerrada", cs.total,
-                            totales(ini, fin).propinas, cs.seguro + cs.credito, cs.arrastre
+                            totales(ini, fin).propinas, cs.seguro + cs.credito, 0.0
                         )
                     )
                 }
-                // para la semana en curso se estima cómo va a cerrar, así la proyección siguiente no se distorsiona
-                val estimado = if (enCurso) cs.arrastre + maxOf(cs.turnos, promNeto) - maxOf(cs.seguro + cs.credito, est.total) else cs.total
-                arrastre = minOf(0.0, estimado)
             }
             fin = fin.plusDays(7)
         }
@@ -432,15 +387,12 @@ class Calc(val db: Db) {
             out.add("ambar" to "Apartaste ${money(ea.hecho)} de ${money(ea.objetivo)} para tu meta; faltan ${money(ea.falta)}.")
         }
         val cs = cuentaSemana(periodoSemana(hoy, db.diaCierre).second)
-        if (cs.arrastre < -0.005) {
-            out.add("ambar" to "Arrastrás ${money(-cs.arrastre)} de deuda con la app de la semana anterior: se va descontando con lo que hagas esta semana.")
-        }
         if (cs.total < -0.005) {
-            out.add("rojo" to "Esta semana vas debiendo ${money(-cs.total)} a la app (contando la deuda anterior).")
+            out.add("rojo" to "Esta semana vas debiendo ${money(-cs.total)} a la app (después del seguro, el crédito y el efectivo).")
         }
         val semHoy = periodoSemana(hoy, db.diaCierre)
         if (descuentoEstimado(hoy).total > 0.005 && descuentosPeriodo(semHoy.first, semHoy.second).total <= 0.005) {
-            out.add("ambar" to "Todavía no cargaste el seguro y el crédito de esta semana (solapa Diario): se descuentan del saldo de la semana pasada.")
+            out.add("ambar" to "Todavía no cargaste el seguro y el crédito de esta semana (solapa Diario).")
         }
         val t = totales(hoy, hoy)
         if (t.neto < -0.005) out.add("rojo" to "Hoy le debés ${money(-t.neto)} a la aplicación (el efectivo supera lo generado).")
